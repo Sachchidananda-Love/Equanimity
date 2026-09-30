@@ -13,7 +13,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  metadataBase: new URL("https://yi-wellbeing.open-lark-9836.chatgpt.site"),
+  metadataBase: new URL("https://yi-wellbeing.calem-cab.chatgpt.site"),
   title: "Yi — practice, cycle & wellbeing",
   description: "A quiet home for Yi's cycle, practice, reflections and wellbeing.",
   openGraph: {
