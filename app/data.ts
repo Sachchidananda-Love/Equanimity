@@ -1,4 +1,9 @@
-export type ActivityType = "Meditation" | "Yoga" | "Workout" | "Other";
+export type ActivityType = string;
+
+export type AssessmentValue = {
+  value: number;
+  note?: string;
+};
 
 export type JournalEntry = {
   id: number;
@@ -8,6 +13,8 @@ export type JournalEntry = {
   duration?: number;
   note?: string;
   mood?: string;
+  assessments?: Record<string, AssessmentValue>;
+  tags?: string[];
 };
 
 export type TimerPreset = {
@@ -17,7 +24,28 @@ export type TimerPreset = {
   color: "sage" | "gold" | "coral";
   interval?: number;
   gongs?: number[];
+  startGong?: string;
+  endGong?: string;
+  intervalGong?: string;
 };
+
+export type ActivityPreset = {
+  id: number;
+  name: string;
+  icon: string;
+  color: "sage" | "gold" | "coral" | "plum";
+};
+
+export type CycleLog = {
+  lastPeriod: string;
+  averageCycle: number;
+  averagePeriod: number;
+  flow: "Spotting" | "Light" | "Medium" | "Heavy";
+  symptoms: string[];
+  temperature?: number;
+};
+
+export type InsightWidgetId = "practice" | "cycle" | "factors" | "body" | "meditation" | "yoga";
 
 export const demoCycle = {
   day: 8,
@@ -29,10 +57,19 @@ export const demoCycle = {
 };
 
 export const demoTimers: TimerPreset[] = [
-  { id: 1, name: "Morning clarity", seconds: 600, color: "sage", gongs: [300] },
-  { id: 2, name: "Deep sit", seconds: 1200, color: "gold", interval: 300 },
-  { id: 3, name: "Evening release", seconds: 900, color: "coral", gongs: [180, 780] },
+  { id: 1, name: "Morning clarity", seconds: 600, color: "sage", gongs: [300], startGong: "Deep temple bowl", endGong: "Deep temple bowl" },
+  { id: 2, name: "Deep sit", seconds: 1200, color: "gold", interval: 300, intervalGong: "Soft woodblock", startGong: "Bright singing bowl", endGong: "Deep temple bowl" },
+  { id: 3, name: "Evening release", seconds: 900, color: "coral", gongs: [180, 780], startGong: "Deep temple bowl", endGong: "Bright singing bowl" },
 ];
+
+export const demoActivities: ActivityPreset[] = [
+  { id: 1, name: "Meditation", icon: "◌", color: "sage" },
+  { id: 2, name: "Yoga", icon: "⌁", color: "gold" },
+  { id: 3, name: "Workout", icon: "↯", color: "coral" },
+  { id: 4, name: "Walking", icon: "↟", color: "plum" },
+];
+
+export const defaultInsightWidgets: InsightWidgetId[] = ["practice", "cycle", "factors", "body", "meditation", "yoga"];
 
 export const demoEntries: JournalEntry[] = [
   { id: 1, type: "Meditation", title: "Evening sit", date: "Sep 29 · 8:42 PM", duration: 20, mood: "Calm and spacious", note: "The breath softened once I stopped trying to arrange it." },
@@ -62,6 +99,7 @@ export const demoWellnessConnector = {
   source: "Demo data",
   cycle: () => demoCycle,
   timers: () => demoTimers,
+  activities: () => demoActivities,
   journal: () => demoEntries,
   weeklyPractice: () => weeklyPractice,
 };

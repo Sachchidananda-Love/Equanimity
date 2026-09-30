@@ -1,10 +1,14 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
-  ActivityType,
+  ActivityPreset,
+  AssessmentValue,
+  CycleLog,
+  defaultInsightWidgets,
   demoWellnessConnector,
   fiveHindrances,
+  InsightWidgetId,
   JournalEntry,
   sevenFactors,
   threeCharacteristics,
@@ -13,272 +17,221 @@ import {
 
 type Screen = "Today" | "Practice" | "Journal" | "Insights";
 type PracticeMode = "Timer" | "Stopwatch" | "Saved";
+type ReflectionRequest = { duration: number; type?: string };
 
 const navItems: { label: Screen; icon: string }[] = [
-  { label: "Today", icon: "⌂" },
-  { label: "Practice", icon: "◷" },
-  { label: "Journal", icon: "▤" },
-  { label: "Insights", icon: "◫" },
+  { label: "Today", icon: "⌂" }, { label: "Practice", icon: "◷" },
+  { label: "Journal", icon: "▤" }, { label: "Insights", icon: "◫" },
 ];
+const gongNames = ["Deep temple bowl", "Bright singing bowl", "Soft woodblock", "Gentle bell"];
+const assessmentGroups = [
+  { name: "Awakening", label: "Seven factors of awakening", items: sevenFactors },
+  { name: "Characteristics", label: "Three characteristics", items: threeCharacteristics },
+  { name: "Hindrances", label: "Five hindrances", items: fiveHindrances },
+];
+const widgetMeta: Record<InsightWidgetId, { title: string; description: string }> = {
+  practice: { title: "Practice rhythm", description: "Meditation and yoga minutes" },
+  cycle: { title: "Cycle overview", description: "Phase and next-period estimate" },
+  factors: { title: "Awakening factors", description: "Reflection trends over time" },
+  body: { title: "Body & cycle", description: "Energy, sleep and symptoms" },
+  meditation: { title: "Meditation", description: "Sessions, time and consistency" },
+  yoga: { title: "Yoga", description: "Sessions, styles and time" },
+};
+const initialCycleLog: CycleLog = { lastPeriod: "2026-09-23", averageCycle: 29, averagePeriod: 5, flow: "Light", symptoms: ["Cramps"], temperature: 36.48 };
 
 function formatTime(totalSeconds: number, includeHours = false) {
-  const seconds = Math.max(0, totalSeconds);
-  const hours = Math.floor(seconds / 3600);
-  const mins = Math.floor((seconds % 3600) / 60);
-  const secs = seconds % 60;
+  const seconds = Math.max(0, totalSeconds); const hours = Math.floor(seconds / 3600);
+  const mins = Math.floor((seconds % 3600) / 60); const secs = seconds % 60;
   if (includeHours || hours > 0) return `${String(hours).padStart(2, "0")}:${String(mins).padStart(2, "0")}:${String(secs).padStart(2, "0")}`;
   return `${String(mins).padStart(2, "0")}:${String(secs).padStart(2, "0")}`;
 }
 
-function tone() {
+function slug(value: string) { return value.toLowerCase().replace(/[^a-z0-9]+/g, "-"); }
+
+function tone(gong = "Deep temple bowl") {
   try {
     const AudioContextClass = window.AudioContext || (window as typeof window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
-    if (!AudioContextClass) return;
-    const context = new AudioContextClass();
-    const oscillator = context.createOscillator();
-    const gain = context.createGain();
-    oscillator.type = "sine";
-    oscillator.frequency.setValueAtTime(220, context.currentTime);
-    oscillator.frequency.exponentialRampToValueAtTime(110, context.currentTime + 1.8);
-    gain.gain.setValueAtTime(0.001, context.currentTime);
-    gain.gain.exponentialRampToValueAtTime(0.25, context.currentTime + 0.03);
-    gain.gain.exponentialRampToValueAtTime(0.001, context.currentTime + 2.2);
-    oscillator.connect(gain).connect(context.destination);
-    oscillator.start();
-    oscillator.stop(context.currentTime + 2.25);
-  } catch { /* audio is optional */ }
+    if (!AudioContextClass) return; const context = new AudioContextClass(); const oscillator = context.createOscillator(); const gain = context.createGain();
+    const bright = gong.includes("Bright") || gong.includes("bell"); const wood = gong.includes("woodblock");
+    oscillator.type = wood ? "triangle" : "sine"; oscillator.frequency.setValueAtTime(bright ? 420 : wood ? 330 : 220, context.currentTime);
+    oscillator.frequency.exponentialRampToValueAtTime(bright ? 170 : 110, context.currentTime + (wood ? .45 : 1.8));
+    gain.gain.setValueAtTime(.001, context.currentTime); gain.gain.exponentialRampToValueAtTime(.22, context.currentTime + .025); gain.gain.exponentialRampToValueAtTime(.001, context.currentTime + (wood ? .65 : 2.2));
+    oscillator.connect(gain).connect(context.destination); oscillator.start(); oscillator.stop(context.currentTime + (wood ? .7 : 2.25));
+  } catch { /* sound is an enhancement */ }
 }
 
 function Navigation({ active, setActive }: { active: Screen; setActive: (screen: Screen) => void }) {
-  const items = navItems.map((item) => (
-    <button key={item.label} onClick={() => setActive(item.label)} className={active === item.label ? "active" : ""} aria-current={active === item.label ? "page" : undefined}>
-      <span className="nav-icon" aria-hidden="true">{item.icon}</span><span>{item.label}</span>
-    </button>
-  ));
-  return <><aside className="side-rail"><button className="brand-mark" onClick={() => setActive("Today")} aria-label="Yi home">yi</button><nav aria-label="Primary navigation">{items}</nav><div className="sync-status"><i />Demo source</div></aside><nav className="bottom-nav" aria-label="Primary navigation">{items}</nav></>;
+  const items = navItems.map((item) => <button key={item.label} onClick={() => setActive(item.label)} className={active === item.label ? "active" : ""} aria-current={active === item.label ? "page" : undefined}><span className="nav-icon" aria-hidden="true">{item.icon}</span><span>{item.label}</span></button>);
+  return <><aside className="side-rail"><button className="brand-mark" onClick={() => setActive("Today")} aria-label="Yi home">yi</button><nav aria-label="Primary navigation">{items}</nav><div className="sync-status"><i />Saved on this device</div></aside><nav className="bottom-nav" aria-label="Primary navigation">{items}</nav></>;
 }
 
 function PageHeader({ eyebrow, title, action }: { eyebrow: string; title: string; action?: React.ReactNode }) {
   return <header className="topbar"><div><p className="eyebrow">{eyebrow}</p><h1>{title}</h1></div>{action ?? <button className="avatar" aria-label="Open profile">Y</button>}</header>;
 }
 
-function CycleCard({ compact = false }: { compact?: boolean }) {
-  const cycle = demoWellnessConnector.cycle();
+function cycleSummary(log: CycleLog) {
+  const now = new Date("2026-09-30T12:00:00"); const last = new Date(`${log.lastPeriod}T12:00:00`);
+  const day = Math.max(1, Math.floor((now.getTime() - last.getTime()) / 86400000) + 1);
+  const ovulation = Math.max(8, log.averageCycle - 14); const fertileStart = ovulation - 5;
+  const phase = day <= log.averagePeriod ? "Menstrual phase" : day < ovulation - 1 ? "Follicular phase" : day <= ovulation + 1 ? "Ovulation window" : "Luteal phase";
+  return { day, phase, nextPeriodIn: Math.max(0, log.averageCycle - day + 1), fertileText: day < fertileStart ? `Fertile window estimated in ${fertileStart - day} days` : day <= ovulation + 1 ? "Within estimated fertile window" : "Estimated fertile window has passed" };
+}
+
+function CycleCard({ cycleLog, compact = false, onLog }: { cycleLog: CycleLog; compact?: boolean; onLog?: () => void }) {
+  const cycle = cycleSummary(cycleLog);
   return <article className={`cycle-card card ${compact ? "compact" : ""}`}>
-    <div className="card-heading"><div><p className="eyebrow">Cycle day {cycle.day}</p><h2>{cycle.phase}</h2></div><button className="quiet-button" aria-label="Cycle details">•••</button></div>
-    <div className="cycle-content">
-      <div className="cycle-ring"><div><strong>{cycle.day}</strong><span>of {cycle.averageCycle}</span></div></div>
-      <div className="cycle-copy"><strong>{cycle.nextPeriodIn} days</strong><span>until your next period</span><p>Fertile window estimated in {cycle.fertileWindowIn} days</p></div>
-    </div>
-    <div className="cycle-note"><span>◉</span> Cycle predictions are estimates and cannot identify a zero-risk day for pregnancy.</div>
+    <div className="card-heading"><div><p className="eyebrow">Cycle day {cycle.day}</p><h2>{cycle.phase}</h2></div>{onLog ? <button className="log-cycle-button" onClick={onLog}>＋ Log</button> : <span className="source-badge">Estimated</span>}</div>
+    <div className="cycle-content"><div className="cycle-ring" style={{ "--cycle-progress": `${Math.min(100, cycle.day / cycleLog.averageCycle * 100)}%` } as React.CSSProperties}><div><strong>{cycle.day}</strong><span>of {cycleLog.averageCycle}</span></div></div><div className="cycle-copy"><strong>{cycle.nextPeriodIn} days</strong><span>until your next period</span><p>{cycle.fertileText}</p>{cycleLog.temperature && <small>Latest BBT {cycleLog.temperature.toFixed(2)}°C</small>}</div></div>
+    <div className="cycle-note"><span>◉</span> Estimates are for awareness only and cannot identify a zero-risk day for pregnancy.</div>
   </article>;
 }
 
 function ArtCube() {
-  return <div className="cube-scene" aria-label="Rotating visual pause"><div className="art-cube">
-    <div className="cube-face face-1">breathe</div><div className="cube-face face-2">notice</div><div className="cube-face face-3">soften</div><div className="cube-face face-4">return</div><div className="cube-face face-5">here</div><div className="cube-face face-6">now</div>
-  </div></div>;
+  return <div className="cube-scene" aria-label="Rotating visual pause"><div className="cube-spin-x"><div className="cube-spin-y"><div className="cube-spin-z"><div className="art-cube"><div className="cube-face face-1">breathe</div><div className="cube-face face-2">notice</div><div className="cube-face face-3">soften</div><div className="cube-face face-4">return</div><div className="cube-face face-5">here</div><div className="cube-face face-6">now</div></div></div></div></div></div>;
 }
 
-function TodayScreen({ setActive }: { setActive: (screen: Screen) => void }) {
-  return <section className="page">
-    <PageHeader eyebrow="Wednesday, September 30" title="Good morning, Yi." />
-    <div className="hero-grid">
-      <CycleCard />
-      <article className="practice-card card">
-        <div className="card-heading"><div><p className="eyebrow">Today</p><h2>Make a little space</h2></div><span className="streak">7 day streak</span></div>
-        <p className="practice-quote">“The quieter you become, the more you are able to hear.”</p>
-        <button className="primary-button" onClick={() => setActive("Practice")}><span>Begin practice</span><span>→</span></button>
-      </article>
-    </div>
-
-    <section className="section-block">
-      <div className="section-heading"><div><p className="eyebrow">A gentle overview</p><h2>Your week</h2></div><button className="text-button" onClick={() => setActive("Insights")}>View insights →</button></div>
-      <div className="metric-grid">
-        <article className="metric card"><span className="metric-icon sage">◌</span><div><strong>86 min</strong><span>Meditation</span></div><small>↑ 18% from last week</small></article>
-        <article className="metric card"><span className="metric-icon gold">⌁</span><div><strong>3 sessions</strong><span>Yoga</span></div><small>1 hr 42 min total</small></article>
-        <article className="metric card"><span className="metric-icon coral">✦</span><div><strong>4 entries</strong><span>Reflections</span></div><small>Most present on Sunday</small></article>
-      </div>
-    </section>
-
-    <section className="home-lower section-block">
-      <div>
-        <div className="section-heading"><div><p className="eyebrow">Recent</p><h2>Your rhythm</h2></div><button className="text-button" onClick={() => setActive("Journal")}>Open journal →</button></div>
-        <article className="timeline-row card"><div className="date-block"><strong>29</strong><span>SEP</span></div><div className="timeline-main"><span className="pill meditation">Meditation</span><h3>Evening sit</h3><p>20 min · Calm and spacious</p></div><button className="quiet-button">›</button></article>
-        <article className="timeline-row card"><div className="date-block"><strong>28</strong><span>SEP</span></div><div className="timeline-main"><span className="pill yoga">Yoga</span><h3>Slow morning flow</h3><p>34 min · Grounded</p></div><button className="quiet-button">›</button></article>
-      </div>
-      <article className="visual-card card"><div><p className="eyebrow">Visual pause</p><h2>Let the day turn slowly.</h2><p>Replace each face with one of your images when you’re ready.</p></div><ArtCube /></article>
-    </section>
+function TodayScreen({ setActive, entries, cycleLog, onCycleLog, openReflection }: { setActive: (screen: Screen) => void; entries: JournalEntry[]; cycleLog: CycleLog; onCycleLog: () => void; openReflection: (request: ReflectionRequest) => void }) {
+  const meditationMinutes = entries.filter((entry) => entry.type === "Meditation").reduce((sum, entry) => sum + (entry.duration ?? 0), 0);
+  const yogaEntries = entries.filter((entry) => entry.type === "Yoga"); const reflections = entries.filter((entry) => entry.note).length;
+  const recent = entries.slice(0, 2);
+  return <section className="page"><PageHeader eyebrow="Wednesday, September 30" title="Good morning, Yi." />
+    <div className="hero-grid"><CycleCard cycleLog={cycleLog} onLog={onCycleLog} /><article className="practice-card card"><div className="card-heading"><div><p className="eyebrow">Today</p><h2>Make a little space</h2></div><span className="streak">7 day streak</span></div><p className="practice-quote">“The quieter you become, the more you are able to hear.”</p><button className="primary-button" onClick={() => setActive("Practice")}><span>Begin practice</span><span>→</span></button></article></div>
+    <section className="section-block"><div className="section-heading"><div><p className="eyebrow">Shortcuts</p><h2>What would help right now?</h2></div></div><div className="shortcut-grid">
+      <button className="shortcut-card blue" onClick={() => openReflection({ duration: 0 })}><span>◌</span><b>Log activity</b><small>Meditation, yoga or your own</small></button>
+      <button className="shortcut-card coral" onClick={onCycleLog}><span>●</span><b>Cycle check-in</b><small>Flow, symptoms and temperature</small></button>
+      <button className="shortcut-card gold" onClick={() => setActive("Journal")}><span>✦</span><b>Daily reflection</b><small>Gratitude or open notes</small></button>
+      <button className="shortcut-card plum" onClick={() => setActive("Insights")}><span>◫</span><b>Explore patterns</b><small>Open your customizable stats</small></button>
+    </div></section>
+    <section className="section-block"><div className="section-heading"><div><p className="eyebrow">A gentle overview</p><h2>Your recorded rhythm</h2></div><button className="text-button" onClick={() => setActive("Insights")}>View insights →</button></div><div className="metric-grid"><article className="metric card"><span className="metric-icon sage">◌</span><div><strong>{meditationMinutes + 40} min</strong><span>Meditation</span></div><small>{entries.filter((entry) => entry.type === "Meditation").length} logged sessions</small></article><article className="metric card"><span className="metric-icon gold">⌁</span><div><strong>{yogaEntries.length} sessions</strong><span>Yoga</span></div><small>{yogaEntries.reduce((sum, entry) => sum + (entry.duration ?? 0), 0)} minutes total</small></article><article className="metric card"><span className="metric-icon coral">✦</span><div><strong>{reflections} entries</strong><span>Reflections</span></div><small>Saved on this device</small></article></div></section>
+    <section className="home-lower section-block"><div><div className="section-heading"><div><p className="eyebrow">Recent</p><h2>Your timeline</h2></div><button className="text-button" onClick={() => setActive("Journal")}>Open journal →</button></div>{recent.map((entry) => <article className="timeline-row card" key={entry.id}><div className="date-block"><strong>{entry.date.includes("Today") ? "30" : entry.date.match(/\d+/)?.[0] ?? "—"}</strong><span>SEP</span></div><div className="timeline-main"><span className={`pill ${slug(entry.type)}`}>{entry.type}</span><h3>{entry.title}</h3><p>{entry.duration ? `${entry.duration} min` : entry.note?.slice(0, 48)}{entry.mood ? ` · ${entry.mood}` : ""}</p></div><button className="quiet-button">›</button></article>)}</div><article className="visual-card card"><div><p className="eyebrow">Visual pause</p><h2>Let the day turn slowly.</h2><p>Three independent axes turn at different speeds. Your images can replace these faces later.</p></div><ArtCube /></article></section>
   </section>;
 }
 
-function TimerDial({ value, total, label }: { value: number; total: number; label: string }) {
+function TimerDial({ value, total, label, marks }: { value: number; total: number; label: string; marks: number[] }) {
   const degrees = total ? Math.max(0, Math.min(360, (1 - value / total) * 360)) : 0;
-  return <div className="timer-dial" style={{ "--progress": `${degrees}deg` } as React.CSSProperties}><div className="timer-inner"><span>{label}</span><strong>{formatTime(value)}</strong><small>{value === total ? "ready when you are" : `${Math.ceil(value / 60)} minutes remaining`}</small></div></div>;
+  return <div className="timer-wrap"><div className="timer-dial" style={{ "--progress": `${degrees}deg` } as React.CSSProperties}>{marks.map((mark) => <i className="gong-mark" key={mark} style={{ transform: `rotate(${mark / total * 360}deg) translateY(-50%)` }} />)}<div className="timer-inner"><span>{label}</span><strong>{formatTime(value)}</strong><small>{value === total ? "ready when you are" : `${Math.ceil(value / 60)} minutes remaining`}</small></div></div></div>;
 }
 
-function PracticeScreen({ openReflection }: { openReflection: (duration: number) => void }) {
-  const presets = demoWellnessConnector.timers();
-  const [mode, setMode] = useState<PracticeMode>("Timer");
-  const [duration, setDuration] = useState(600);
-  const [remaining, setRemaining] = useState(600);
-  const [running, setRunning] = useState(false);
-  const [elapsed, setElapsed] = useState(0);
-  const [gongOpen, setGongOpen] = useState(false);
-  const [interval, setIntervalMinutes] = useState(5);
-  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-
-  useEffect(() => {
-    if (!running) return;
-    timerRef.current = setInterval(() => {
-      if (mode === "Stopwatch") setElapsed((time) => time + 1);
-      else setRemaining((time) => Math.max(0, time - 1));
-    }, 1000);
-    return () => { if (timerRef.current) clearInterval(timerRef.current); };
-  }, [running, mode]);
-
-  useEffect(() => {
-    if (mode !== "Stopwatch" && remaining === 0 && running) {
-      setRunning(false); tone(); openReflection(Math.max(1, Math.round(duration / 60)));
-    }
-  }, [remaining, running, mode, duration, openReflection]);
-
-  const chooseDuration = (seconds: number) => { setDuration(seconds); setRemaining(seconds); setRunning(false); };
-  const choosePreset = (preset: TimerPreset) => { chooseDuration(preset.seconds); setIntervalMinutes((preset.interval ?? 300) / 60); setMode("Timer"); };
-  const finishStopwatch = () => { setRunning(false); openReflection(Math.max(1, Math.round(elapsed / 60))); };
-
-  return <section className="page practice-page">
-    <PageHeader eyebrow="Practice room" title="Settle in." action={<button className="header-action" onClick={() => setMode("Saved")}>Saved timers <span>↗</span></button>} />
-    <div className="segmented" role="tablist" aria-label="Practice type">{(["Timer", "Stopwatch", "Saved"] as PracticeMode[]).map((item) => <button role="tab" aria-selected={mode === item} key={item} onClick={() => { setMode(item); setRunning(false); }}>{item}</button>)}</div>
-
-    {mode === "Saved" ? <div className="saved-layout">
-      <div className="saved-intro"><p className="eyebrow">Your collection</p><h2>Return to a familiar rhythm.</h2><p>Each timer remembers its duration and gong pattern.</p></div>
-      <div className="saved-grid">{presets.map((preset) => <article className="saved-timer card" key={preset.id}>
-        <div className={`mini-dial ${preset.color}`}><span>{Math.round(preset.seconds / 60)}</span><small>min</small></div>
-        <div className="saved-copy"><p className="eyebrow">{preset.interval ? `Gong every ${preset.interval / 60} min` : `${preset.gongs?.length ?? 0} custom gong${preset.gongs?.length === 1 ? "" : "s"}`}</p><h3>{preset.name}</h3></div>
-        <button className="round-play" onClick={() => choosePreset(preset)} aria-label={`Start ${preset.name}`}>→</button>
-      </article>)}</div>
-      <button className="outline-button"><span>＋</span> Save a new timer</button>
-    </div> : <div className="practice-workspace">
-      <section className="timer-stage">
-        {mode === "Timer" ? <TimerDial value={remaining} total={duration} label="Meditation timer" /> : <div className="stopwatch-display"><span>Stopwatch</span><strong>{formatTime(elapsed, true)}</strong><small>unbounded practice</small></div>}
-        <div className="timer-actions">
-          <button className="secondary-circle" onClick={() => { if (mode === "Timer") setRemaining(duration); else setElapsed(0); setRunning(false); }} aria-label="Reset">↺</button>
-          <button className="start-button" onClick={() => setRunning(!running)}>{running ? "Pause" : mode === "Timer" && remaining < duration ? "Resume" : "Start"}</button>
-          <button className="secondary-circle" onClick={mode === "Stopwatch" ? finishStopwatch : () => openReflection(Math.max(1, Math.round((duration - remaining) / 60)))} aria-label="Finish">✓</button>
-        </div>
-        {mode === "Timer" && <div className="duration-chips" aria-label="Timer duration">{[5, 10, 20, 30, 45].map((mins) => <button className={duration === mins * 60 ? "active" : ""} key={mins} onClick={() => chooseDuration(mins * 60)}>{mins} min</button>)}</div>}
-      </section>
-      <aside className="timer-settings card">
-        <div className="card-heading"><div><p className="eyebrow">Sound</p><h2>Gongs</h2></div><button className="sound-button" onClick={tone}>♪ Try</button></div>
-        <button className="setting-row" onClick={() => setGongOpen(!gongOpen)}><span><i className="setting-icon">◎</i><b>Opening & closing</b><small>Deep temple bowl</small></span><em>{gongOpen ? "⌃" : "⌄"}</em></button>
-        {gongOpen && <div className="gong-options"><button className="selected">Deep temple bowl <span>✓</span></button><button>Bright singing bowl</button><button>Soft woodblock</button></div>}
-        <div className="setting-row"><span><i className="setting-icon">↻</i><b>Repeating gong</b><small>Every {interval} minutes</small></span><label className="toggle"><input type="checkbox" defaultChecked /><span /></label></div>
-        <input className="gong-range" type="range" min="1" max="15" value={interval} onChange={(event) => setIntervalMinutes(Number(event.target.value))} aria-label="Repeating gong interval" />
-        <div className="setting-row"><span><i className="setting-icon">＋</i><b>Custom gongs</b><small>At 3 and 8 minutes</small></span><button className="mini-action">Edit</button></div>
-        <p className="setting-note">Gongs play while this page remains open. Background audio can be added when the native mobile version is connected.</p>
-      </aside>
-    </div>}
-  </section>;
-}
-
-function ReflectionModal({ duration, onClose, onSave }: { duration: number; onClose: () => void; onSave: (entry: JournalEntry) => void }) {
-  const [type, setType] = useState<ActivityType>("Meditation");
-  const [note, setNote] = useState("");
-  const [openGroup, setOpenGroup] = useState("Awakening");
-  const [values, setValues] = useState<Record<string, number>>(() => Object.fromEntries([...sevenFactors, ...threeCharacteristics, ...fiveHindrances].map((item) => [item, 50])));
-  const groups = [{ name: "Awakening", label: "Seven factors of awakening", items: sevenFactors }, { name: "Characteristics", label: "Three characteristics", items: threeCharacteristics }, { name: "Hindrances", label: "Five hindrances", items: fiveHindrances }];
-  const save = () => { onSave({ id: Date.now(), type, title: type === "Meditation" ? "Open practice" : `${type} session`, date: "Today · just now", duration, note, mood: "Logged with care" }); onClose(); };
-  return <div className="modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}><section className="reflection-modal" role="dialog" aria-modal="true" aria-labelledby="reflection-title">
-    <header className="modal-header"><div><p className="eyebrow">Practice complete · {duration} min</p><h2 id="reflection-title">How was that?</h2></div><button className="close-button" onClick={onClose} aria-label="Close">×</button></header>
-    <div className="activity-picker">{(["Meditation", "Yoga", "Workout", "Other"] as ActivityType[]).map((item) => <button key={item} className={type === item ? "active" : ""} onClick={() => setType(item)}><span>{item === "Meditation" ? "◌" : item === "Yoga" ? "⌁" : item === "Workout" ? "↯" : "＋"}</span>{item}</button>)}</div>
-    <div className="assessment-groups">{groups.map((group) => <article className="assessment-group" key={group.name}>
-      <button className="assessment-heading" onClick={() => setOpenGroup(openGroup === group.name ? "" : group.name)}><span><small>{group.name === "Awakening" ? "01" : group.name === "Characteristics" ? "02" : "03"}</small><b>{group.label}</b></span><em>{openGroup === group.name ? "−" : "+"}</em></button>
-      {openGroup === group.name && <div className="sliders">{group.items.map((item) => <label key={item}><span>{item}<output>{values[item]}</output></span><input type="range" min="0" max="100" value={values[item]} onChange={(event) => setValues({ ...values, [item]: Number(event.target.value) })} /></label>)}</div>}
-    </article>)}</div>
-    <label className="notes-field"><span>Anything to remember?</span><textarea value={note} onChange={(event) => setNote(event.target.value)} placeholder="A thought, a feeling, a tiny shift…" /></label>
-    <footer className="modal-footer"><button className="text-button" onClick={save}>Save without reflection</button><button className="primary-button modal-save" onClick={save}>Save practice <span>→</span></button></footer>
+function SaveTimerModal({ initial, onClose, onSave }: { initial?: TimerPreset; onClose: () => void; onSave: (preset: TimerPreset) => void }) {
+  const [generatedId] = useState(() => Date.now());
+  const starting = initial ?? { id: generatedId, name: "New practice", seconds: 600, color: "sage" as const, startGong: gongNames[0], endGong: gongNames[0], gongs: [] };
+  const [name, setName] = useState(starting.name); const [hours, setHours] = useState(Math.floor(starting.seconds / 3600)); const [minutes, setMinutes] = useState(Math.floor(starting.seconds % 3600 / 60)); const [seconds, setSeconds] = useState(starting.seconds % 60);
+  const [startGong, setStartGong] = useState(starting.startGong ?? gongNames[0]); const [endGong, setEndGong] = useState(starting.endGong ?? gongNames[0]); const [intervalEnabled, setIntervalEnabled] = useState(Boolean(starting.interval)); const [intervalMins, setIntervalMins] = useState(Math.max(1, Math.round((starting.interval ?? 300) / 60)));
+  const [customGongs, setCustomGongs] = useState((starting.gongs ?? []).map((gong) => Math.round(gong / 60))); const [color, setColor] = useState<TimerPreset["color"]>(starting.color);
+  const save = () => onSave({ id: starting.id, name: name.trim() || "Untitled timer", seconds: Math.max(5, hours * 3600 + minutes * 60 + seconds), color, startGong, endGong, interval: intervalEnabled ? intervalMins * 60 : undefined, intervalGong: "Soft woodblock", gongs: customGongs.filter((gong) => gong > 0).map((gong) => gong * 60) });
+  return <div className="modal-backdrop"><section className="builder-modal" role="dialog" aria-modal="true"><header className="modal-header"><div><p className="eyebrow">{initial ? "Edit saved timer" : "Save a timer"}</p><h2>Build your rhythm</h2></div><button className="close-button" onClick={onClose}>×</button></header>
+    <label className="builder-name">Timer name<input value={name} onChange={(event) => setName(event.target.value)} /></label>
+    <div className="time-picker"><label><input type="number" min="0" max="12" value={hours} onChange={(event) => setHours(Number(event.target.value))} /><span>hours</span></label><b>:</b><label><input type="number" min="0" max="59" value={minutes} onChange={(event) => setMinutes(Number(event.target.value))} /><span>minutes</span></label><b>:</b><label><input type="number" min="0" max="59" value={seconds} onChange={(event) => setSeconds(Number(event.target.value))} /><span>seconds</span></label></div>
+    <div className="builder-section"><p className="eyebrow">Opening & closing</p><div className="field-pair"><label>Opening gong<select value={startGong} onChange={(event) => setStartGong(event.target.value)}>{gongNames.map((gong) => <option key={gong}>{gong}</option>)}</select></label><label>Closing gong<select value={endGong} onChange={(event) => setEndGong(event.target.value)}>{gongNames.map((gong) => <option key={gong}>{gong}</option>)}</select></label></div></div>
+    <div className="builder-section"><div className="builder-toggle"><div><p className="eyebrow">Repeating gong</p><span>Sound at a steady interval</span></div><span className="toggle"><input aria-label="Enable repeating gong" type="checkbox" checked={intervalEnabled} onChange={(event) => setIntervalEnabled(event.target.checked)} /><span /></span></div>{intervalEnabled && <label className="number-field">Every <input type="number" min="1" max="120" value={intervalMins} onChange={(event) => setIntervalMins(Number(event.target.value))} /> minutes</label>}</div>
+    <div className="builder-section"><p className="eyebrow">Manual gongs</p>{customGongs.map((gong, index) => <div className="custom-gong-row" key={index}><span>{index + 1}</span><input type="number" min="1" value={gong} onChange={(event) => setCustomGongs(customGongs.map((item, itemIndex) => itemIndex === index ? Number(event.target.value) : item))} /><em>min from start</em><button onClick={() => setCustomGongs(customGongs.filter((_, itemIndex) => itemIndex !== index))}>×</button></div>)}<button className="add-inline" onClick={() => setCustomGongs([...customGongs, Math.max(1, Math.round((minutes || 10) / 2))])}>＋ Add gong</button></div>
+    <div className="color-picker"><span>Timer color</span>{(["sage", "gold", "coral"] as const).map((item) => <button aria-label={item} className={`${item} ${color === item ? "active" : ""}`} onClick={() => setColor(item)} key={item} />)}</div>
+    <footer className="modal-footer"><button className="text-button" onClick={onClose}>Cancel</button><button className="primary-button modal-save" onClick={() => { save(); onClose(); }}><span>Save timer</span><span>→</span></button></footer>
   </section></div>;
 }
 
-function JournalScreen({ entries, addEntry }: { entries: JournalEntry[]; addEntry: (entry: JournalEntry) => void }) {
-  const [filter, setFilter] = useState("All");
-  const [expanded, setExpanded] = useState<number | null>(entries[0]?.id ?? null);
-  const [gratitude, setGratitude] = useState("");
-  const visible = filter === "All" ? entries : entries.filter((entry) => entry.type === filter);
+function PracticeScreen({ timers, setTimers, openReflection, notify }: { timers: TimerPreset[]; setTimers: React.Dispatch<React.SetStateAction<TimerPreset[]>>; openReflection: (request: ReflectionRequest) => void; notify: (message: string) => void }) {
+  const [mode, setMode] = useState<PracticeMode>("Timer"); const [duration, setDuration] = useState(600); const [remaining, setRemaining] = useState(600); const [running, setRunning] = useState(false); const [elapsed, setElapsed] = useState(0);
+  const [gongMenu, setGongMenu] = useState<"opening" | "closing" | null>(null); const [openingGong, setOpeningGong] = useState(gongNames[0]); const [closingGong, setClosingGong] = useState(gongNames[0]); const [intervalEnabled, setIntervalEnabled] = useState(true); const [intervalMinutes, setIntervalMinutes] = useState(5); const [customGongs, setCustomGongs] = useState([3, 8]);
+  const [editingGongs, setEditingGongs] = useState(false); const [builder, setBuilder] = useState<TimerPreset | "new" | null>(null); const [presetMenu, setPresetMenu] = useState<number | null>(null); const [draftId] = useState(() => Date.now()); const lastGong = useRef(-1);
+  useEffect(() => { if (!running) return; const timer = setTimeout(() => { if (mode === "Stopwatch") { setElapsed((time) => time + 1); return; } const next = Math.max(0, remaining - 1); const practiced = duration - next; if (practiced > 0 && lastGong.current !== practiced && ((intervalEnabled && practiced % (intervalMinutes * 60) === 0) || customGongs.some((gong) => gong * 60 === practiced))) { lastGong.current = practiced; tone("Soft woodblock"); } setRemaining(next); if (next === 0) { setRunning(false); tone(closingGong); openReflection({ duration: Math.max(1, Math.round(duration / 60)), type: "Meditation" }); } }, 1000); return () => clearTimeout(timer); }, [running, mode, remaining, duration, intervalEnabled, intervalMinutes, customGongs, closingGong, openReflection]);
+  const chooseDuration = (seconds: number) => { setDuration(seconds); setRemaining(seconds); setRunning(false); lastGong.current = -1; };
+  const choosePreset = (preset: TimerPreset) => { chooseDuration(preset.seconds); setOpeningGong(preset.startGong ?? gongNames[0]); setClosingGong(preset.endGong ?? gongNames[0]); setIntervalEnabled(Boolean(preset.interval)); setIntervalMinutes(Math.max(1, Math.round((preset.interval ?? 300) / 60))); setCustomGongs((preset.gongs ?? []).map((gong) => Math.round(gong / 60))); setMode("Timer"); };
+  const savePreset = (preset: TimerPreset) => { setTimers((current) => current.some((item) => item.id === preset.id) ? current.map((item) => item.id === preset.id ? preset : item) : [...current, preset]); notify("Timer saved"); };
+  const toggleRunning = () => { if (!running && mode === "Timer" && remaining === duration) tone(openingGong); setRunning(!running); };
+  const finish = () => { setRunning(false); if (mode === "Stopwatch") { tone(closingGong); openReflection({ duration: Math.max(1, Math.round(elapsed / 60)) }); } else openReflection({ duration: Math.max(1, Math.round((duration - remaining) / 60)), type: "Meditation" }); };
+  const currentDraft: TimerPreset = { id: draftId, name: "My meditation", seconds: duration, color: "sage", startGong: openingGong, endGong: closingGong, interval: intervalEnabled ? intervalMinutes * 60 : undefined, gongs: customGongs.map((gong) => gong * 60) };
+  return <section className="page practice-page"><PageHeader eyebrow="Practice room" title="Settle in." action={<button className="header-action" onClick={() => setMode("Saved")}>Saved timers <span>{timers.length}</span></button>} /><div className="segmented" role="tablist">{(["Timer", "Stopwatch", "Saved"] as PracticeMode[]).map((item) => <button role="tab" aria-selected={mode === item} key={item} onClick={() => { setMode(item); setRunning(false); }}>{item}</button>)}</div>
+    {mode === "Saved" ? <div className="saved-layout"><div className="saved-intro"><p className="eyebrow">Your collection</p><h2>Return to a familiar rhythm.</h2><p>Saved timers remember exact durations, interval sounds, and every custom gong.</p></div><div className="saved-grid">{timers.map((preset) => <article className="saved-timer card" key={preset.id}><div className={`mini-dial ${preset.color}`}><span>{Math.round(preset.seconds / 60)}</span><small>min</small></div><div className="saved-copy"><p className="eyebrow">{preset.interval ? `Gong every ${preset.interval / 60} min` : `${preset.gongs?.length ?? 0} custom gongs`}</p><h3>{preset.name}</h3><span>{preset.startGong}</span></div><button className="timer-more" onClick={() => setPresetMenu(presetMenu === preset.id ? null : preset.id)}>•••</button><button className="round-play" onClick={() => choosePreset(preset)}>→</button>{presetMenu === preset.id && <div className="timer-card-menu"><button onClick={() => { setBuilder(preset); setPresetMenu(null); }}>Edit</button><button onClick={() => { setTimers((current) => current.filter((item) => item.id !== preset.id)); setPresetMenu(null); notify("Timer removed"); }}>Delete</button></div>}</article>)}</div><button className="outline-button" onClick={() => setBuilder("new")}><span>＋</span> Save a new timer</button></div> : <div className="practice-workspace"><section className="timer-stage">{mode === "Timer" ? <TimerDial value={remaining} total={duration} label="Meditation timer" marks={customGongs.map((gong) => gong * 60).filter((gong) => gong < duration)} /> : <div className="stopwatch-display"><span>Stopwatch</span><strong>{formatTime(elapsed, true)}</strong><small>unbounded practice</small></div>}<div className="timer-actions"><button className="secondary-circle" onClick={() => { if (mode === "Timer") setRemaining(duration); else setElapsed(0); setRunning(false); }}>↺</button><button className="start-button" onClick={toggleRunning}>{running ? "Pause" : mode === "Timer" && remaining < duration ? "Resume" : "Start"}</button><button className="secondary-circle" onClick={finish}>✓</button></div>{mode === "Timer" && <><div className="duration-chips">{[5, 10, 20, 30, 45, 60].map((mins) => <button className={duration === mins * 60 ? "active" : ""} key={mins} onClick={() => chooseDuration(mins * 60)}>{mins} min</button>)}</div><button className="save-current" onClick={() => setBuilder(currentDraft)}>＋ Save this setup</button></>}</section>
+      <aside className="timer-settings card"><div className="card-heading"><div><p className="eyebrow">Sound & structure</p><h2>Gongs</h2></div><button className="sound-button" onClick={() => tone(openingGong)}>♪ Try</button></div>
+        {(["opening", "closing"] as const).map((kind) => { const value = kind === "opening" ? openingGong : closingGong; return <div className="gong-setting" key={kind}><button className="setting-row" onClick={() => setGongMenu(gongMenu === kind ? null : kind)}><span><i className="setting-icon">◎</i><b>{kind === "opening" ? "Opening gong" : "Closing gong"}</b><small>{value}</small></span><em>⌄</em></button>{gongMenu === kind && <div className="gong-options">{gongNames.map((gong) => <button className={gong === value ? "selected" : ""} key={gong} onClick={() => { if (kind === "opening") setOpeningGong(gong); else setClosingGong(gong); setGongMenu(null); tone(gong); }}>{gong}{gong === value && <span>✓</span>}</button>)}</div>}</div>; })}
+        <div className="setting-row"><span><i className="setting-icon">↻</i><b>Repeating gong</b><small>{intervalEnabled ? `Every ${intervalMinutes} minutes` : "Off"}</small></span><span className="toggle"><input aria-label="Enable repeating gong" type="checkbox" checked={intervalEnabled} onChange={(event) => setIntervalEnabled(event.target.checked)} /><span /></span></div>{intervalEnabled && <input className="gong-range" type="range" min="1" max="20" value={intervalMinutes} onChange={(event) => setIntervalMinutes(Number(event.target.value))} />}
+        <button className="setting-row" onClick={() => setEditingGongs(!editingGongs)}><span><i className="setting-icon">＋</i><b>Custom gongs</b><small>{customGongs.length ? `At ${customGongs.join(", ")} minutes` : "None"}</small></span><em>{editingGongs ? "⌃" : "Edit"}</em></button>{editingGongs && <div className="inline-gong-editor">{customGongs.map((gong, index) => <div key={index}><input type="number" min="1" value={gong} onChange={(event) => setCustomGongs(customGongs.map((item, itemIndex) => itemIndex === index ? Number(event.target.value) : item))} /><span>min</span><button onClick={() => setCustomGongs(customGongs.filter((_, itemIndex) => itemIndex !== index))}>×</button></div>)}<button onClick={() => setCustomGongs([...customGongs, Math.max(1, Math.round(duration / 120))])}>＋ Add gong</button></div>}
+        <p className="setting-note">This browser version plays gongs while the page is open. Reliable lock-screen timing belongs in the future native app.</p>
+      </aside></div>}
+    {builder && <SaveTimerModal initial={builder === "new" ? undefined : builder} onClose={() => setBuilder(null)} onSave={savePreset} />}
+  </section>;
+}
+
+function ReflectionModal({ request, activities, setActivities, onClose, onSave }: { request: ReflectionRequest; activities: ActivityPreset[]; setActivities: React.Dispatch<React.SetStateAction<ActivityPreset[]>>; onClose: () => void; onSave: (entry: JournalEntry) => void }) {
+  const [type, setType] = useState(request.type ?? activities[0]?.name ?? "Meditation"); const [duration, setDuration] = useState(request.duration); const [note, setNote] = useState(""); const [mood, setMood] = useState("Present"); const [openGroup, setOpenGroup] = useState("Awakening"); const [addingType, setAddingType] = useState(false); const [newType, setNewType] = useState(""); const [noteFor, setNoteFor] = useState<string | null>(null);
+  const [assessments, setAssessments] = useState<Record<string, AssessmentValue>>(() => Object.fromEntries([...sevenFactors, ...threeCharacteristics, ...fiveHindrances].map((item) => [item, { value: 50, note: "" }])));
+  const addType = () => { if (!newType.trim()) return; const preset: ActivityPreset = { id: Date.now(), name: newType.trim(), icon: "◇", color: "plum" }; setActivities((current) => [...current, preset]); setType(preset.name); setNewType(""); setAddingType(false); };
+  const save = () => onSave({ id: Date.now(), type, title: type === "Meditation" ? "Open practice" : `${type} session`, date: "Today · just now", duration, note, mood, assessments, tags: ["practice"] });
+  return <div className="modal-backdrop"><section className="reflection-modal" role="dialog" aria-modal="true"><header className="modal-header"><div><p className="eyebrow">Practice complete</p><h2>How was that?</h2></div><button className="close-button" onClick={onClose}>×</button></header>
+    <div className="reflection-basics"><label>Minutes<input type="number" min="0" value={duration} onChange={(event) => setDuration(Number(event.target.value))} /></label><label>Felt<select value={mood} onChange={(event) => setMood(event.target.value)}><option>Present</option><option>Calm</option><option>Energized</option><option>Restless</option><option>Heavy</option><option>Spacious</option></select></label></div>
+    <div className="activity-picker">{activities.map((item) => <button key={item.id} className={type === item.name ? "active" : ""} onClick={() => setType(item.name)}><span>{item.icon}</span>{item.name}</button>)}<button onClick={() => setAddingType(true)}><span>＋</span>Add</button></div>{addingType && <div className="add-preset-row"><input value={newType} onChange={(event) => setNewType(event.target.value)} placeholder="Activity name" onKeyDown={(event) => { if (event.key === "Enter") addType(); }} /><button onClick={addType}>Add preset</button></div>}
+    <div className="assessment-groups">{assessmentGroups.map((group, groupIndex) => <article className="assessment-group" key={group.name}><button className="assessment-heading" onClick={() => setOpenGroup(openGroup === group.name ? "" : group.name)}><span><small>0{groupIndex + 1}</small><b>{group.label}</b></span><em>{openGroup === group.name ? "−" : "+"}</em></button>{openGroup === group.name && <div className="sliders">{group.items.map((item) => <div className="assessment-item" key={item}><label><span>{item}<output>{assessments[item].value}%</output></span><input type="range" min="0" max="100" value={assessments[item].value} onChange={(event) => setAssessments({ ...assessments, [item]: { ...assessments[item], value: Number(event.target.value) } })} /></label><button className={assessments[item].note ? "has-note" : ""} onClick={() => setNoteFor(noteFor === item ? null : item)}>✎</button>{noteFor === item && <input className="factor-note" value={assessments[item].note} onChange={(event) => setAssessments({ ...assessments, [item]: { ...assessments[item], note: event.target.value } })} placeholder={`Note about ${item.toLowerCase()}…`} />}</div>)}</div>}</article>)}</div>
+    <label className="notes-field"><span>Anything else to remember?</span><textarea value={note} onChange={(event) => setNote(event.target.value)} placeholder="A thought, a feeling, a tiny shift…" /></label><footer className="modal-footer"><button className="text-button" onClick={() => { setNote(""); save(); onClose(); }}>Save time only</button><button className="primary-button modal-save" onClick={() => { save(); onClose(); }}><span>Save practice</span><span>→</span></button></footer>
+  </section></div>;
+}
+
+function NewEntryModal({ activities, onClose, onSave }: { activities: ActivityPreset[]; onClose: () => void; onSave: (entry: JournalEntry) => void }) {
+  const [type, setType] = useState("Journal"); const [title, setTitle] = useState(""); const [note, setNote] = useState(""); const [duration, setDuration] = useState(0);
+  return <div className="modal-backdrop"><section className="builder-modal small-modal"><header className="modal-header"><div><p className="eyebrow">New journal entry</p><h2>Capture this moment</h2></div><button className="close-button" onClick={onClose}>×</button></header><div className="field-pair"><label>Type<select value={type} onChange={(event) => setType(event.target.value)}><option>Journal</option><option>Gratitude</option>{activities.map((activity) => <option key={activity.id}>{activity.name}</option>)}</select></label><label>Minutes<input type="number" min="0" value={duration} onChange={(event) => setDuration(Number(event.target.value))} /></label></div><label className="builder-name">Title<input value={title} onChange={(event) => setTitle(event.target.value)} placeholder="Give this entry a name" /></label><label className="notes-field"><span>Reflection</span><textarea value={note} onChange={(event) => setNote(event.target.value)} placeholder="What would you like to remember?" /></label><button className="primary-button" onClick={() => { onSave({ id: Date.now(), type, title: title.trim() || "Untitled reflection", date: "Today · just now", duration: duration || undefined, note }); onClose(); }}><span>Save entry</span><span>→</span></button></section></div>;
+}
+
+function JournalScreen({ entries, activities, addEntry }: { entries: JournalEntry[]; activities: ActivityPreset[]; addEntry: (entry: JournalEntry) => void }) {
+  const [filter, setFilter] = useState("All"); const [expanded, setExpanded] = useState<number | null>(entries[0]?.id ?? null); const [gratitude, setGratitude] = useState(""); const [search, setSearch] = useState(""); const [searching, setSearching] = useState(false); const [sort, setSort] = useState<"Newest" | "Oldest">("Newest"); const [newEntry, setNewEntry] = useState(false);
+  const filters = ["All", "Meditation", "Yoga", "Gratitude", "Period", ...activities.map((activity) => activity.name).filter((name) => !["Meditation", "Yoga"].includes(name))];
+  const visible = entries.filter((entry) => (filter === "All" || entry.type === filter) && `${entry.title} ${entry.note ?? ""} ${entry.type}`.toLowerCase().includes(search.toLowerCase())).sort((a, b) => sort === "Newest" ? b.id - a.id : a.id - b.id);
   const submitGratitude = () => { if (!gratitude.trim()) return; addEntry({ id: Date.now(), type: "Gratitude", title: "A grateful moment", date: "Today · just now", note: gratitude.trim() }); setGratitude(""); };
-  return <section className="page journal-page">
-    <PageHeader eyebrow="Your living record" title="Journal" action={<button className="header-action">Search <span>⌕</span></button>} />
-    <div className="journal-grid">
-      <div className="journal-main">
-        <div className="filter-row">{["All", "Meditation", "Yoga", "Gratitude", "Period"].map((item) => <button key={item} className={filter === item ? "active" : ""} onClick={() => setFilter(item)}>{item}</button>)}</div>
-        <div className="month-marker"><span>September 2026</span><i /></div>
-        <div className="journal-list">{visible.map((entry) => <article className={`journal-entry card ${expanded === entry.id ? "expanded" : ""}`} key={entry.id}>
-          <button className="journal-summary" onClick={() => setExpanded(expanded === entry.id ? null : entry.id)}>
-            <span className={`entry-symbol ${entry.type.toLowerCase()}`}>{entry.type === "Meditation" ? "◌" : entry.type === "Yoga" ? "⌁" : entry.type === "Gratitude" ? "✦" : entry.type === "Period" ? "●" : "▤"}</span>
-            <span className="entry-copy"><small>{entry.date}</small><b>{entry.title}</b><em>{entry.duration ? `${entry.duration} min` : entry.note?.slice(0, 54)}</em></span>
-            <span className={`pill ${entry.type.toLowerCase()}`}>{entry.type}</span><span className="chevron">⌄</span>
-          </button>
-          {expanded === entry.id && <div className="entry-detail">{entry.mood && <p className="mood-line"><span>Felt</span>{entry.mood}</p>}<p>{entry.note || "Time spent practicing — no reflection added."}</p><button className="text-button">Edit reflection</button></div>}
-        </article>)}</div>
-      </div>
-      <aside className="journal-aside">
-        <article className="gratitude-card card"><p className="eyebrow">Daily gratitude</p><h2>What felt quietly good today?</h2><textarea value={gratitude} onChange={(event) => setGratitude(event.target.value)} placeholder="I’m grateful for…" /><button className="primary-button" onClick={submitGratitude}><span>Add to journal</span><span>＋</span></button></article>
-        <article className="prompt-card"><span>Journal prompt</span><p>Where did you feel most at home in yourself this week?</p><button onClick={() => setGratitude("I felt most at home when ")}>Reflect →</button></article>
-      </aside>
-    </div>
+  return <section className="page journal-page"><PageHeader eyebrow="Your living record" title="Journal" action={<div className="header-actions"><button className="header-action" onClick={() => setSearching(!searching)}>Search <span>⌕</span></button><button className="header-action primary-header" onClick={() => setNewEntry(true)}>＋ New entry</button></div>} />{searching && <div className="journal-search"><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search notes, activities, feelings…" /><button onClick={() => { setSearch(""); setSearching(false); }}>×</button></div>}
+    <div className="journal-grid"><div className="journal-main"><div className="journal-controls"><div className="filter-row">{filters.map((item) => <button key={item} className={filter === item ? "active" : ""} onClick={() => setFilter(item)}>{item}</button>)}</div><select value={sort} onChange={(event) => setSort(event.target.value as "Newest" | "Oldest")}><option>Newest</option><option>Oldest</option></select></div><div className="month-marker"><span>September 2026 · {visible.length} entries</span><i /></div><div className="journal-list">{visible.map((entry) => <article className={`journal-entry card ${expanded === entry.id ? "expanded" : ""}`} key={entry.id}><button className="journal-summary" onClick={() => setExpanded(expanded === entry.id ? null : entry.id)}><span className={`entry-symbol ${slug(entry.type)}`}>{entry.type === "Meditation" ? "◌" : entry.type === "Yoga" ? "⌁" : entry.type === "Gratitude" ? "✦" : entry.type === "Period" ? "●" : "▤"}</span><span className="entry-copy"><small>{entry.date}</small><b>{entry.title}</b><em>{entry.duration ? `${entry.duration} min` : entry.note?.slice(0, 54)}</em></span><span className={`pill ${slug(entry.type)}`}>{entry.type}</span><span className="chevron">⌄</span></button>{expanded === entry.id && <div className="entry-detail">{entry.mood && <p className="mood-line"><span>Felt</span>{entry.mood}</p>}<p>{entry.note || "Time spent practicing — no reflection added."}</p>{entry.assessments && <div className="entry-assessment"><span>Assessment captured</span><b>{Object.values(entry.assessments).filter((value) => value.note).length} factor notes</b></div>}<div className="entry-actions"><button className="text-button">Edit reflection</button><button className="text-button">•••</button></div></div>}</article>)}{visible.length === 0 && <div className="empty-state"><span>⌕</span><h2>No entries found</h2><p>Try another filter or add a new reflection.</p></div>}</div></div>
+      <aside className="journal-aside"><article className="gratitude-card card"><p className="eyebrow">Daily gratitude</p><h2>What felt quietly good today?</h2><textarea value={gratitude} onChange={(event) => setGratitude(event.target.value)} placeholder="I’m grateful for…" /><button className="primary-button" onClick={submitGratitude}><span>Add to journal</span><span>＋</span></button></article><article className="prompt-card"><span>Journal prompt</span><p>Where did you feel most at home in yourself this week?</p><button onClick={() => setGratitude("I felt most at home when ")}>Reflect →</button></article></aside>
+    </div>{newEntry && <NewEntryModal activities={activities} onClose={() => setNewEntry(false)} onSave={addEntry} />}</section>;
+}
+
+function WeeklyChart() { return <div className="weekly-chart">{demoWellnessConnector.weeklyPractice().map((item) => <div className="bar-column" key={item.day}><div className="bar-stack"><i className="yoga-bar" style={{ height: `${item.yoga * 2}px` }} /><i className="meditation-bar" style={{ height: `${item.meditation * 2}px` }} /></div><span>{item.day}</span></div>)}</div>; }
+function FactorLines() { return <div className="factor-lines"><div className="chart-grid"><i /><i /><i /><i /></div><div className="trend trend-a" /><div className="trend trend-b" /><div className="trend trend-c" /></div>; }
+
+function WidgetControls({ id, order, setOrder, onHide }: { id: InsightWidgetId; order: InsightWidgetId[]; setOrder: (order: InsightWidgetId[]) => void; onHide: () => void }) {
+  const index = order.indexOf(id); const move = (direction: -1 | 1) => { const next = [...order]; const target = index + direction; if (target < 0 || target >= next.length) return; [next[index], next[target]] = [next[target], next[index]]; setOrder(next); };
+  return <div className="widget-controls"><span>Move</span><button disabled={index === 0} onClick={() => move(-1)}>←</button><button disabled={index === order.length - 1} onClick={() => move(1)}>→</button><button onClick={onHide}>Hide</button></div>;
+}
+
+function CustomizeInsightsModal({ order, hidden, setOrder, setHidden, onClose }: { order: InsightWidgetId[]; hidden: InsightWidgetId[]; setOrder: (order: InsightWidgetId[]) => void; setHidden: (hidden: InsightWidgetId[]) => void; onClose: () => void }) {
+  const move = (id: InsightWidgetId, direction: -1 | 1) => { const index = order.indexOf(id); const target = index + direction; if (target < 0 || target >= order.length) return; const next = [...order]; [next[index], next[target]] = [next[target], next[index]]; setOrder(next); };
+  return <div className="modal-backdrop"><section className="builder-modal customize-modal"><header className="modal-header"><div><p className="eyebrow">Insights layout</p><h2>Choose what matters</h2></div><button className="close-button" onClick={onClose}>×</button></header><p className="modal-intro">Show, hide, and reorder cards. Your layout is saved on this device.</p><div className="widget-list">{order.map((id, index) => <div key={id}><span className="drag-handle">⠿</span><span><b>{widgetMeta[id].title}</b><small>{widgetMeta[id].description}</small></span><span className="toggle"><input aria-label={`Show ${widgetMeta[id].title}`} type="checkbox" checked={!hidden.includes(id)} onChange={() => setHidden(hidden.includes(id) ? hidden.filter((item) => item !== id) : [...hidden, id])} /><span /></span><button disabled={index === 0} onClick={() => move(id, -1)}>↑</button><button disabled={index === order.length - 1} onClick={() => move(id, 1)}>↓</button></div>)}</div><footer className="modal-footer"><button className="text-button" onClick={() => { setOrder(defaultInsightWidgets); setHidden([]); }}>Reset layout</button><button className="primary-button modal-save" onClick={onClose}><span>Done</span><span>✓</span></button></footer></section></div>;
+}
+
+function AnalyticsModal({ widget, entries, onClose }: { widget: InsightWidgetId; entries: JournalEntry[]; onClose: () => void }) {
+  const [range, setRange] = useState("90d"); const title = widgetMeta[widget].title; const assessmentEntries = entries.filter((entry) => entry.assessments);
+  return <div className="modal-backdrop"><section className="analytics-modal"><header className="modal-header"><div><p className="eyebrow">Expanded analytics</p><h2>{title}</h2></div><button className="close-button" onClick={onClose}>×</button></header><div className="range-tabs">{["7d", "30d", "90d", "1yr", "All"].map((item) => <button key={item} className={range === item ? "active" : ""} onClick={() => setRange(item)}>{item}</button>)}</div><div className="analytics-hero"><div><span>Entries in view</span><strong>{widget === "factors" ? assessmentEntries.length + 14 : entries.length + 24}</strong><small>{range} window</small></div><FactorLines /></div>{widget === "factors" ? <div className="factor-table">{sevenFactors.map((factor, index) => <div key={factor}><i style={{ background: ["#8eae9e", "#d78368", "#d7a95f", "#88729a"][index % 4] }} /><span>{factor}</span><b>{Math.min(92, 48 + index * 6)}%</b><em>{index % 2 ? "+4" : "+9"}</em></div>)}</div> : <><div className="analytics-big-chart"><WeeklyChart /></div><div className="analytics-callouts"><article><span>Average session</span><strong>24 min</strong></article><article><span>Most consistent</span><strong>Sundays</strong></article><article><span>Change</span><strong>+18%</strong></article></div></>}<p className="source-caption"><span>↻</span> Calculated from demo and device-local records</p></section></div>;
+}
+
+function InsightsScreen({ entries, cycleLog, order, hidden, setOrder, setHidden }: { entries: JournalEntry[]; cycleLog: CycleLog; order: InsightWidgetId[]; hidden: InsightWidgetId[]; setOrder: (order: InsightWidgetId[]) => void; setHidden: (hidden: InsightWidgetId[]) => void }) {
+  const [customizing, setCustomizing] = useState(false); const [expanded, setExpanded] = useState<InsightWidgetId | null>(null); const practiceEntries = entries.filter((entry) => entry.duration); const totalMinutes = practiceEntries.reduce((sum, entry) => sum + (entry.duration ?? 0), 0) + 148;
+  const renderWidget = (id: InsightWidgetId) => {
+    if (hidden.includes(id)) return null; const controls = customizing && <WidgetControls id={id} order={order} setOrder={setOrder} onHide={() => setHidden([...hidden, id])} />;
+    if (id === "practice") return <article className="chart-card card practice-chart-card" key={id}>{controls}<div className="card-heading"><div><p className="eyebrow">Practice rhythm</p><h2>Minutes this week</h2></div><button className="expand-button" onClick={() => setExpanded(id)}>Expand ↗</button></div><div className="legend"><span><i />Meditation</span><span><i className="legend-gold" />Yoga</span></div><WeeklyChart /></article>;
+    if (id === "cycle") return <div className="widget-wrap" key={id}>{controls}<CycleCard cycleLog={cycleLog} compact /></div>;
+    if (id === "factors") return <article className="chart-card card factor-card" key={id}>{controls}<div className="card-heading"><div><p className="eyebrow">Reflection patterns</p><h2>Awakening factors</h2></div><button className="expand-button" onClick={() => setExpanded(id)}>Expand ↗</button></div><div className="factor-overview"><div><strong>Equanimity</strong><span>Most changed</span></div><b>+18%</b></div><FactorLines /><div className="factor-legend"><span><i />Equanimity</span><span><i />Mindfulness</span><span><i />Energy</span></div></article>;
+    if (id === "body") return <article className="body-card card" key={id}>{controls}<p className="eyebrow">Body & cycle</p><div className="card-heading"><h2>How this phase has felt</h2><button className="expand-button" onClick={() => setExpanded(id)}>Expand ↗</button></div><div className="body-stats"><div><span>Energy</span><b>Steady</b><i style={{ width: "72%" }} /></div><div><span>Sleep</span><b>7h 48m</b><i style={{ width: "82%" }} /></div><div><span>Symptoms</span><b>{cycleLog.symptoms.length ? cycleLog.symptoms.join(", ") : "Light"}</b><i style={{ width: "34%" }} /></div></div><p className="source-caption"><span>↻</span> Demo now · Apple Health ready later</p></article>;
+    const type = id === "meditation" ? "Meditation" : "Yoga"; const typeEntries = entries.filter((entry) => entry.type === type); const mins = typeEntries.reduce((sum, entry) => sum + (entry.duration ?? 0), 0);
+    return <article className={`activity-stat-card card ${id}`} key={id}>{controls}<div className="card-heading"><div><p className="eyebrow">{type} analytics</p><h2>{type}</h2></div><button className="expand-button" onClick={() => setExpanded(id)}>Expand ↗</button></div><div className="activity-stat-main"><strong>{typeEntries.length}</strong><span>sessions</span><b>{mins} min</b></div><div className="activity-spark"><i /><i /><i /><i /><i /><i /><i /></div><p>{id === "meditation" ? "Equanimity appears strongest after sessions over 20 minutes." : "Morning practices are your most consistent."}</p></article>;
+  };
+  return <section className="page insights-page"><PageHeader eyebrow="Patterns, not pressure" title="Your wellbeing" action={<div className="header-actions"><button className="header-action">Last 30 days <span>⌄</span></button><button className={`header-action primary-header ${customizing ? "active" : ""}`} onClick={() => setCustomizing(!customizing)}>{customizing ? "Done" : "Customize"} <span>✦</span></button></div>} />
+    <div className="insight-summary six"><article><span>Total time practiced</span><strong>{Math.floor(totalMinutes / 60)}<small>h</small> {totalMinutes % 60}<small>m</small></strong><em>Across all activities</em></article><article><span>Total journal entries</span><strong>{entries.length + 18}</strong><em>{entries.filter((entry) => entry.note).length} with notes</em></article><article><span>Practiced at least once</span><strong>18<small> days</small></strong><em>In the last 30 days</em></article><article><span>At least 10 min/day</span><strong>14<small> days</small></strong><em>↑ 3 from last month</em></article><article><span>At least 1 hr/day</span><strong>3<small> days</small></strong><em>Longest 1h 34m</em></article><article><span>Current streak</span><strong>7<small> days</small></strong><em>Longest: 14 days</em></article></div>
+    {customizing && <div className="customize-banner"><span>✦</span><div><b>Layout mode</b><small>Move, hide, or restore cards. Changes save automatically.</small></div><button onClick={() => setCustomizing(true)}>Manage all</button></div>}
+    <div className={`insights-grid ${customizing ? "customizing" : ""}`}>{order.map(renderWidget)}</div><button className="add-widget-button" onClick={() => setCustomizing(true)}>＋ Manage insight widgets</button>
+    {customizing && <CustomizeInsightsModal order={order} hidden={hidden} setOrder={setOrder} setHidden={setHidden} onClose={() => setCustomizing(false)} />}{expanded && <AnalyticsModal widget={expanded} entries={entries} onClose={() => setExpanded(null)} />}
   </section>;
 }
 
-function WeeklyChart() {
-  const data = demoWellnessConnector.weeklyPractice();
-  return <div className="weekly-chart" aria-label="Weekly practice minutes chart">{data.map((item) => <div className="bar-column" key={item.day}><div className="bar-stack"><i className="yoga-bar" style={{ height: `${item.yoga * 2}px` }} /><i className="meditation-bar" style={{ height: `${item.meditation * 2}px` }} /></div><span>{item.day}</span></div>)}</div>;
-}
-
-function FactorLines() {
-  return <div className="factor-lines" aria-label="Seven factors trend chart"><div className="chart-grid"><i /><i /><i /><i /></div><div className="trend trend-a" /><div className="trend trend-b" /><div className="trend trend-c" /></div>;
-}
-
-function InsightsScreen({ entries }: { entries: JournalEntry[] }) {
-  const practiceEntries = entries.filter((entry) => entry.duration);
-  const totalMinutes = practiceEntries.reduce((sum, entry) => sum + (entry.duration ?? 0), 0) + 148;
-  return <section className="page insights-page">
-    <PageHeader eyebrow="Patterns, not pressure" title="Your wellbeing" action={<button className="header-action">Last 30 days <span>⌄</span></button>} />
-    <div className="insight-summary">
-      <article><span>Practice time</span><strong>{Math.floor(totalMinutes / 60)}<small>h</small> {totalMinutes % 60}<small>m</small></strong><em>↑ 12% this month</em></article>
-      <article><span>Sessions</span><strong>{practiceEntries.length + 9}</strong><em>Across 18 days</em></article>
-      <article><span>Current streak</span><strong>7<small> days</small></strong><em>Longest: 14 days</em></article>
-      <article><span>Reflections</span><strong>{entries.length + 18}</strong><em>6 this week</em></article>
-    </div>
-    <div className="insights-grid">
-      <article className="chart-card card practice-chart-card"><div className="card-heading"><div><p className="eyebrow">Practice rhythm</p><h2>Minutes this week</h2></div><div className="legend"><span><i className="legend-sage" />Meditation</span><span><i className="legend-gold" />Yoga</span></div></div><WeeklyChart /></article>
-      <CycleCard compact />
-      <article className="chart-card card factor-card"><div className="card-heading"><div><p className="eyebrow">Reflection patterns</p><h2>Awakening factors</h2></div><button className="quiet-button">•••</button></div><div className="factor-overview"><div><strong>Equanimity</strong><span>Most changed</span></div><b>+18%</b></div><FactorLines /><div className="factor-legend"><span><i />Equanimity</span><span><i />Mindfulness</span><span><i />Energy</span></div></article>
-      <article className="body-card card"><p className="eyebrow">Body & cycle</p><h2>How this phase has felt</h2><div className="body-stats"><div><span>Energy</span><b>Steady</b><i style={{ width: "72%" }} /></div><div><span>Sleep</span><b>7h 48m</b><i style={{ width: "82%" }} /></div><div><span>Symptoms</span><b>Light</b><i style={{ width: "34%" }} /></div></div><p className="source-caption"><span>↻</span> Demo data now · Apple Health connector ready later</p></article>
-    </div>
-  </section>;
+function CycleLogModal({ cycleLog, onClose, onSave }: { cycleLog: CycleLog; onClose: () => void; onSave: (log: CycleLog) => void }) {
+  const [lastPeriod, setLastPeriod] = useState(cycleLog.lastPeriod); const [averageCycle, setAverageCycle] = useState(cycleLog.averageCycle); const [averagePeriod, setAveragePeriod] = useState(cycleLog.averagePeriod); const [flow, setFlow] = useState<CycleLog["flow"]>(cycleLog.flow); const [symptoms, setSymptoms] = useState(cycleLog.symptoms); const [temperature, setTemperature] = useState(cycleLog.temperature?.toString() ?? ""); const symptomOptions = ["Cramps", "Tenderness", "Headache", "Fatigue", "Bloating", "Mood shift"];
+  return <div className="modal-backdrop"><section className="builder-modal cycle-log-modal"><header className="modal-header"><div><p className="eyebrow">Cycle check-in</p><h2>Log what you know</h2></div><button className="close-button" onClick={onClose}>×</button></header><p className="modal-intro">Your entries improve personal estimates over time. They are not a substitute for contraception or medical advice.</p><div className="field-pair"><label>Last period started<input type="date" value={lastPeriod} onChange={(event) => setLastPeriod(event.target.value)} /></label><label>Basal temperature °C<input type="number" min="34" max="42" step=".01" value={temperature} onChange={(event) => setTemperature(event.target.value)} placeholder="36.45" /></label></div><div className="field-pair"><label>Average cycle<input type="number" min="15" max="60" value={averageCycle} onChange={(event) => setAverageCycle(Number(event.target.value))} /></label><label>Average period<input type="number" min="1" max="14" value={averagePeriod} onChange={(event) => setAveragePeriod(Number(event.target.value))} /></label></div><div className="builder-section"><p className="eyebrow">Flow today</p><div className="choice-chips">{(["Spotting", "Light", "Medium", "Heavy"] as const).map((item) => <button className={flow === item ? "active" : ""} onClick={() => setFlow(item)} key={item}>{item}</button>)}</div></div><div className="builder-section"><p className="eyebrow">Symptoms</p><div className="choice-chips wrap">{symptomOptions.map((item) => <button className={symptoms.includes(item) ? "active" : ""} onClick={() => setSymptoms(symptoms.includes(item) ? symptoms.filter((symptom) => symptom !== item) : [...symptoms, item])} key={item}>{item}</button>)}</div></div><button className="primary-button" onClick={() => { onSave({ lastPeriod, averageCycle, averagePeriod, flow, symptoms, temperature: temperature ? Number(temperature) : undefined }); onClose(); }}><span>Save cycle check-in</span><span>→</span></button></section></div>;
 }
 
 export default function Home() {
-  const [active, setActive] = useState<Screen>("Today");
-  const [reflectionDuration, setReflectionDuration] = useState<number | null>(null);
-  const [entries, setEntries] = useState<JournalEntry[]>(demoWellnessConnector.journal());
-  const [toast, setToast] = useState("");
-
-  useEffect(() => {
-    const saved = window.localStorage.getItem("yi-journal");
-    if (saved) { try { setEntries(JSON.parse(saved)); } catch { /* keep demo data */ } }
-  }, []);
-  useEffect(() => { window.localStorage.setItem("yi-journal", JSON.stringify(entries)); }, [entries]);
+  const [active, setActive] = useState<Screen>("Today"); const [reflection, setReflection] = useState<ReflectionRequest | null>(null); const [cycleOpen, setCycleOpen] = useState(false); const [entries, setEntries] = useState<JournalEntry[]>(demoWellnessConnector.journal()); const [timers, setTimers] = useState<TimerPreset[]>(demoWellnessConnector.timers()); const [activities, setActivities] = useState<ActivityPreset[]>(demoWellnessConnector.activities());
+  const [cycleLog, setCycleLog] = useState<CycleLog>(initialCycleLog); const [widgetOrder, setWidgetOrder] = useState<InsightWidgetId[]>(defaultInsightWidgets); const [hiddenWidgets, setHiddenWidgets] = useState<InsightWidgetId[]>([]); const [toast, setToast] = useState(""); const [ready, setReady] = useState(false);
+  useEffect(() => { const timer = setTimeout(() => { const read = <T,>(key: string, fallback: T): T => { try { const value = localStorage.getItem(key); return value ? JSON.parse(value) : fallback; } catch { return fallback; } }; setEntries(read("yi-journal", demoWellnessConnector.journal())); setTimers(read("yi-timers", demoWellnessConnector.timers())); setActivities(read("yi-activities", demoWellnessConnector.activities())); setCycleLog(read("yi-cycle", initialCycleLog)); setWidgetOrder(read("yi-widget-order", defaultInsightWidgets)); setHiddenWidgets(read("yi-hidden-widgets", [])); setReady(true); }, 0); return () => clearTimeout(timer); }, []);
+  useEffect(() => { if (!ready) return; localStorage.setItem("yi-journal", JSON.stringify(entries)); localStorage.setItem("yi-timers", JSON.stringify(timers)); localStorage.setItem("yi-activities", JSON.stringify(activities)); localStorage.setItem("yi-cycle", JSON.stringify(cycleLog)); localStorage.setItem("yi-widget-order", JSON.stringify(widgetOrder)); localStorage.setItem("yi-hidden-widgets", JSON.stringify(hiddenWidgets)); }, [ready, entries, timers, activities, cycleLog, widgetOrder, hiddenWidgets]);
   useEffect(() => { if (!toast) return; const id = setTimeout(() => setToast(""), 2800); return () => clearTimeout(id); }, [toast]);
-
-  const addEntry = (entry: JournalEntry) => { setEntries((current) => [entry, ...current]); setToast("Saved to your journal"); };
-  const screen = useMemo(() => {
-    if (active === "Practice") return <PracticeScreen openReflection={setReflectionDuration} />;
-    if (active === "Journal") return <JournalScreen entries={entries} addEntry={addEntry} />;
-    if (active === "Insights") return <InsightsScreen entries={entries} />;
-    return <TodayScreen setActive={setActive} />;
-  }, [active, entries]);
-
-  return <main className="app-shell"><Navigation active={active} setActive={setActive} />{screen}{reflectionDuration !== null && <ReflectionModal duration={reflectionDuration} onClose={() => setReflectionDuration(null)} onSave={addEntry} />}{toast && <div className="toast" role="status"><span>✓</span>{toast}</div>}</main>;
+  const notify = (message: string) => setToast(message); const addEntry = (entry: JournalEntry) => { setEntries((current) => [entry, ...current]); notify("Saved to your journal"); };
+  const saveCycle = (log: CycleLog) => { setCycleLog(log); addEntry({ id: Date.now(), type: "Period", title: "Cycle check-in", date: "Today · just now", note: `${log.flow} flow${log.symptoms.length ? ` · ${log.symptoms.join(", ")}` : ""}${log.temperature ? ` · ${log.temperature.toFixed(2)}°C` : ""}` }); };
+  let screen: React.ReactNode; if (active === "Practice") screen = <PracticeScreen timers={timers} setTimers={setTimers} openReflection={setReflection} notify={notify} />; else if (active === "Journal") screen = <JournalScreen entries={entries} activities={activities} addEntry={addEntry} />; else if (active === "Insights") screen = <InsightsScreen entries={entries} cycleLog={cycleLog} order={widgetOrder} hidden={hiddenWidgets} setOrder={setWidgetOrder} setHidden={setHiddenWidgets} />; else screen = <TodayScreen setActive={setActive} entries={entries} cycleLog={cycleLog} onCycleLog={() => setCycleOpen(true)} openReflection={setReflection} />;
+  return <main className="app-shell"><Navigation active={active} setActive={setActive} />{screen}{reflection && <ReflectionModal request={reflection} activities={activities} setActivities={setActivities} onClose={() => setReflection(null)} onSave={addEntry} />}{cycleOpen && <CycleLogModal cycleLog={cycleLog} onClose={() => setCycleOpen(false)} onSave={saveCycle} />}{toast && <div className="toast" role="status"><span>✓</span>{toast}</div>}</main>;
 }
