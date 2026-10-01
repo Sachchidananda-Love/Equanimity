@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
+import { readFile, stat } from "node:fs/promises";
 import test from "node:test";
 
 async function render() {
@@ -23,12 +23,13 @@ test("server-renders the complete Yi experience", async () => {
   assert.match(html, /<title>Yi — practice, cycle &amp; wellbeing<\/title>/i);
   assert.match(html, /Good morning, Yi\./);
   assert.match(html, /Meditation timer/);
+  assert.doesNotMatch(html, /Settle in\./);
   assert.match(html, />Custom<\/button>/);
   assert.match(html, /Journal prompt/);
   assert.match(html, /Start writing/);
   assert.match(html, /aria-label="Edit dashboard"/);
   assert.match(html, /Daily reflection/);
-  assert.match(html, /Rotating cube of personal photos and video/);
+  assert.match(html, /Rotating cube of personal photos/);
   assert.match(html, /Three characteristics/);
   assert.match(html, /Five hindrances/);
   assert.doesNotMatch(html, /What would help right now\?/);
@@ -55,19 +56,30 @@ test("keeps durable timers and responsive controls in the product source", async
   assert.match(page, /AssessmentPatternChart/);
   assert.match(page, /Calculated from saved slider assessments/);
   assert.match(page, /Each saved slider check-in becomes a point/);
+  assert.match(page, /ActivityHistoryChart/);
+  assert.match(page, /Calculated from logged/);
+  assert.match(page, /Review entry/);
+  assert.match(page, /dismissBackdrop/);
+  assert.match(page, /saved-timer-open/);
+  assert.match(page, /Back to practice/);
+  assert.doesNotMatch(page, /className="round-play"/);
   assert.match(page, /Move any slider to begin logging/);
   assert.match(page, /setPointerCapture/);
   assert.match(page, /elementsFromPoint/);
   assert.match(page, /cubic-bezier\(\.2,\.8,\.2,1\)/);
-  assert.match(page, /wedding\.mov/);
   assert.match(page, /yi-shortcut-widgets-migrated/);
   assert.doesNotMatch(page, />Felt</);
   assert.match(css, /\.gong-mark:after/);
   assert.match(css, /\.segmented:before/);
   assert.match(css, /\.range-tabs:before/);
   assert.match(css, /\.assessment-chart canvas/);
+  assert.match(css, /\.cube-face[^}]*border:0/);
+  assert.match(css, /\.activity-history-chart/);
   assert.match(css, /@media \(max-width:360px\)/);
   assert.match(css, /safe-area-inset-bottom/);
   assert.match(layout, /Yi — practice, cycle & wellbeing/);
   assert.equal((quotes.match(/^ {2}"/gm) ?? []).length, 99);
+
+  const cubeSizes = await Promise.all(Array.from({ length: 23 }, (_, index) => stat(new URL(`../public/cube-media/cube-${String(index + 1).padStart(2, "0")}.jpg`, import.meta.url)).then((file) => file.size)));
+  assert.ok(cubeSizes.every((size) => size < 100_000), "cube images should stay lightweight");
 });
