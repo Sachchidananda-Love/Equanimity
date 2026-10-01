@@ -46,6 +46,26 @@ const journalPrompts = [
   "What changed when you stopped trying to change the moment?",
   "What would gentleness look like for the rest of this day?",
 ];
+const dailyQuotes = [
+  "Dette øyeblikket er det eneste stedet livet faktisk skjer.",
+  "Du trenger ikke løse hele livet nå. Bare dette åndedraget.",
+  "Tankene dine er været. Du er himmelen.",
+  "Legg merke til at du legger merke til. Der begynner friheten.",
+  "Stillhet er ikke tomhet. Det er rommet alt annet vokser i.",
+  "Du er mer enn historien du forteller om deg selv.",
+  "Det du motstår, blir sittende. Det du møter med vennlighet, kan slippe taket.",
+  "Kjærlighet begynner der behovet for å ha rett slutter.",
+  "Å gi uten å regne er den enkleste formen for frihet.",
+  "Feil er ikke dommer. De er data.",
+  "Nysgjerrighet er sterkere enn selvtillit.",
+  "Å huske at livet er skjørt gjør hver dag kostbar.",
+  "Usikkerhet er ikke problemet. Kampen mot den er.",
+  "Du kan ikke holde på elven. Du kan bare lære å flyte.",
+  "Jeg velger ro fremfor hastverk.",
+  "Hvile er en del av arbeidet, ikke en belønning for det.",
+  "Gjør én ting om gangen, og gjør den hel.",
+  "Fremgang er ofte stille. Stol på det som ikke synes ennå.",
+];
 type StoredPractice = {
   mode: "Timer" | "Stopwatch";
   duration: number;
@@ -111,11 +131,12 @@ function ArtCube() {
 }
 
 function TodayScreen({ setActive, entries, cycleLog, onCycleLog, openReflection }: { setActive: (screen: Screen) => void; entries: JournalEntry[]; cycleLog: CycleLog; onCycleLog: () => void; openReflection: (request: ReflectionRequest) => void }) {
+  const [quoteIndex, setQuoteIndex] = useState(0);
   const meditationMinutes = entries.filter((entry) => entry.type === "Meditation").reduce((sum, entry) => sum + (entry.duration ?? 0), 0);
   const yogaEntries = entries.filter((entry) => entry.type === "Yoga"); const reflections = entries.filter((entry) => entry.note).length;
   const recent = entries.slice(0, 2);
   return <section className="page"><PageHeader eyebrow="Wednesday, September 30" title="Good morning, Yi." />
-    <div className="hero-grid"><CycleCard cycleLog={cycleLog} onLog={onCycleLog} /><article className="practice-card card"><div className="card-heading"><div><p className="eyebrow">Today</p><h2>Make a little space</h2></div><span className="streak">7 day streak</span></div><p className="practice-quote">“The quieter you become, the more you are able to hear.”</p><button className="primary-button" onClick={() => setActive("Practice")}><span>Begin practice</span><span>→</span></button></article></div>
+    <div className="hero-grid"><CycleCard cycleLog={cycleLog} onLog={onCycleLog} /><article className="practice-card card"><div className="card-heading"><div><p className="eyebrow">Daily quote</p><h2>Make a little space</h2></div><span className="quote-count">{quoteIndex + 1} / {dailyQuotes.length}</span></div><p className="practice-quote">“{dailyQuotes[quoteIndex]}”</p><div className="quote-actions"><div><button aria-label="Previous quote" onClick={() => setQuoteIndex((quoteIndex - 1 + dailyQuotes.length) % dailyQuotes.length)}>←</button><button aria-label="Next quote" onClick={() => setQuoteIndex((quoteIndex + 1) % dailyQuotes.length)}>→</button></div><button className="primary-button" onClick={() => setActive("Practice")}><span>Begin practice</span><span>→</span></button></div></article></div>
     <section className="section-block"><div className="section-heading"><div><p className="eyebrow">Shortcuts</p><h2>What would help right now?</h2></div></div><div className="shortcut-grid">
       <button className="shortcut-card blue" onClick={() => openReflection({ duration: 0 })}><span>◌</span><b>Log activity</b><small>Meditation, yoga or your own</small></button>
       <button className="shortcut-card coral" onClick={onCycleLog}><span>●</span><b>Cycle check-in</b><small>Flow, symptoms and temperature</small></button>
