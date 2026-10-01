@@ -51,6 +51,10 @@ test("keeps durable timers and responsive controls in the product source", async
   assert.match(page, /Edit reflection/);
   assert.match(page, /yi-dashboard-widgets/);
   assert.match(page, /customGongSounds/);
+  assert.match(page, /Repeating gong minutes/);
+  assert.match(page, /AssessmentPatternChart/);
+  assert.match(page, /Calculated from saved slider assessments/);
+  assert.match(page, /Each saved slider check-in becomes a point/);
   assert.match(page, /Move any slider to begin logging/);
   assert.match(page, /setPointerCapture/);
   assert.match(page, /elementsFromPoint/);
@@ -59,6 +63,9 @@ test("keeps durable timers and responsive controls in the product source", async
   assert.match(page, /yi-shortcut-widgets-migrated/);
   assert.doesNotMatch(page, />Felt</);
   assert.match(css, /\.gong-mark:after/);
+  assert.match(css, /\.segmented:before/);
+  assert.match(css, /\.range-tabs:before/);
+  assert.match(css, /\.assessment-chart canvas/);
   assert.match(css, /@media \(max-width:360px\)/);
   assert.match(css, /safe-area-inset-bottom/);
   assert.match(layout, /Yi — practice, cycle & wellbeing/);
