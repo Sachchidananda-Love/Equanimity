@@ -37,16 +37,49 @@ export type ActivityPreset = {
   color: "sage" | "gold" | "coral" | "plum";
 };
 
+export type CycleFlow = "None" | "Spotting" | "Light" | "Medium" | "Heavy";
+
+export type CycleDayLog = {
+  id: number;
+  date: string;
+  flow: CycleFlow;
+  cycleDayOne: boolean;
+  temperature?: number;
+  temperatureSource: "Tempdrop" | "Oral" | "Vaginal";
+  questionableTemperature: boolean;
+  cervicalMucus: "None / dry" | "Sticky" | "Creamy" | "Watery" | "Egg white";
+  mucusSensation: "Dry" | "Damp" | "Wet" | "Slippery";
+  cervixPosition: "Low" | "Medium" | "High";
+  cervixFirmness: "Firm" | "Medium" | "Soft";
+  cervixOpening: "Closed" | "Medium" | "Open";
+  ovulationTest: "Not tested" | "Negative" | "Positive" | "Low" | "High" | "Peak";
+  pregnancyTest: "Not tested" | "Negative" | "Positive";
+  intercourse: boolean;
+  symptoms: string[];
+  energy: number;
+  sexDrive: number;
+  pms: number;
+  disturbances: string[];
+  medicationNote?: string;
+  notes?: string;
+  sleepScore?: number;
+  sleepMinutes?: number;
+  deepSleepMinutes?: number;
+  sleepLatencyMinutes?: number;
+  sleepInterruptions?: number;
+};
+
 export type CycleLog = {
   lastPeriod: string;
   averageCycle: number;
   averagePeriod: number;
-  flow: "Spotting" | "Light" | "Medium" | "Heavy";
+  flow: CycleFlow;
   symptoms: string[];
   temperature?: number;
+  history: CycleDayLog[];
 };
 
-export type InsightWidgetId = "practice" | "cycle" | "factors" | "characteristics" | "hindrances" | "body" | "meditation" | "yoga";
+export type InsightWidgetId = "practice" | "cycle" | "factors" | "faculties" | "characteristics" | "hindrances" | "body" | "meditation" | "yoga";
 
 export const demoCycle = {
   day: 8,
@@ -70,7 +103,7 @@ export const demoActivities: ActivityPreset[] = [
   { id: 4, name: "Walking", icon: "↟", color: "plum" },
 ];
 
-export const defaultInsightWidgets: InsightWidgetId[] = ["practice", "cycle", "factors", "characteristics", "hindrances", "body", "meditation", "yoga"];
+export const defaultInsightWidgets: InsightWidgetId[] = ["practice", "cycle", "factors", "faculties", "characteristics", "hindrances", "meditation", "yoga"];
 
 export const demoEntries: JournalEntry[] = [
   { id: 1, type: "Meditation", title: "Evening sit", date: "Sep 29 · 8:42 PM", duration: 20, mood: "Calm and spacious", note: "The breath softened once I stopped trying to arrange it." },
@@ -91,6 +124,7 @@ export const weeklyPractice = [
 ];
 
 export const sevenFactors = ["Mindfulness", "Investigation", "Energy", "Rapture", "Tranquility", "Concentration", "Equanimity"];
+export const fiveFaculties = ["Faith", "Energy", "Mindfulness", "Concentration", "Wisdom"];
 export const threeCharacteristics = ["Impermanence", "Not-self", "Unsatisfactoriness"];
 export const fiveHindrances = ["Sense desire", "Ill will", "Sloth & torpor", "Restlessness", "Doubt"];
 
