@@ -24,6 +24,7 @@ export type TimerPreset = {
   color: "sage" | "gold" | "coral";
   interval?: number;
   gongs?: number[];
+  gongSounds?: string[];
   startGong?: string;
   endGong?: string;
   intervalGong?: string;
