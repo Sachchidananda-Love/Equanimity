@@ -46,7 +46,7 @@ export type CycleLog = {
   temperature?: number;
 };
 
-export type InsightWidgetId = "practice" | "cycle" | "factors" | "body" | "meditation" | "yoga";
+export type InsightWidgetId = "practice" | "cycle" | "factors" | "characteristics" | "hindrances" | "body" | "meditation" | "yoga";
 
 export const demoCycle = {
   day: 8,
@@ -70,7 +70,7 @@ export const demoActivities: ActivityPreset[] = [
   { id: 4, name: "Walking", icon: "↟", color: "plum" },
 ];
 
-export const defaultInsightWidgets: InsightWidgetId[] = ["practice", "cycle", "factors", "body", "meditation", "yoga"];
+export const defaultInsightWidgets: InsightWidgetId[] = ["practice", "cycle", "factors", "characteristics", "hindrances", "body", "meditation", "yoga"];
 
 export const demoEntries: JournalEntry[] = [
   { id: 1, type: "Meditation", title: "Evening sit", date: "Sep 29 · 8:42 PM", duration: 20, mood: "Calm and spacious", note: "The breath softened once I stopped trying to arrange it." },

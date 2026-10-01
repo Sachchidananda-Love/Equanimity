@@ -29,6 +29,8 @@ test("server-renders the complete Yi experience", async () => {
   assert.match(html, /aria-label="Edit dashboard"/);
   assert.match(html, /Daily reflection/);
   assert.match(html, /Rotating cube of personal photos and video/);
+  assert.match(html, /Three characteristics/);
+  assert.match(html, /Five hindrances/);
   assert.doesNotMatch(html, /What would help right now\?/);
   assert.doesNotMatch(html, /A thought to turn with/);
   assert.doesNotMatch(html, /Building your site|codex-preview/);
@@ -51,6 +53,8 @@ test("keeps durable timers and responsive controls in the product source", async
   assert.match(page, /customGongSounds/);
   assert.match(page, /Move any slider to begin logging/);
   assert.match(page, /setPointerCapture/);
+  assert.match(page, /elementsFromPoint/);
+  assert.match(page, /cubic-bezier\(\.2,\.8,\.2,1\)/);
   assert.match(page, /wedding\.mov/);
   assert.match(page, /yi-shortcut-widgets-migrated/);
   assert.doesNotMatch(page, />Felt</);
