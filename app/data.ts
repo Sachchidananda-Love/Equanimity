@@ -15,6 +15,8 @@ export type JournalEntry = {
   mood?: string;
   assessments?: Record<string, AssessmentValue>;
   tags?: string[];
+  lunarContext?: string;
+  cycleContext?: string;
 };
 
 export type TimerPreset = {
@@ -79,7 +81,7 @@ export type CycleLog = {
   history: CycleDayLog[];
 };
 
-export type InsightWidgetId = "practice" | "cycle" | "factors" | "faculties" | "characteristics" | "hindrances" | "body" | "meditation" | "maintenance-yoga" | "workout-yoga";
+export type InsightWidgetId = "practice" | "cycle" | "factors" | "faculties" | "characteristics" | "hindrances" | "body" | "meditation" | "maintenance-yoga" | "workout-yoga" | "books";
 
 export const demoCycle = {
   day: 8,
@@ -104,7 +106,7 @@ export const demoActivities: ActivityPreset[] = [
   { id: 5, name: "Walking", icon: "↟", color: "plum" },
 ];
 
-export const defaultInsightWidgets: InsightWidgetId[] = ["practice", "cycle", "meditation", "maintenance-yoga", "workout-yoga", "factors", "faculties", "characteristics", "hindrances"];
+export const defaultInsightWidgets: InsightWidgetId[] = ["practice", "cycle", "meditation", "maintenance-yoga", "workout-yoga", "books", "factors", "faculties", "characteristics", "hindrances"];
 
 export const demoEntries: JournalEntry[] = [
   { id: 1, type: "Meditation", title: "Evening sit", date: "Sep 29 · 8:42 PM", duration: 20, mood: "Calm and spacious", note: "The breath softened once I stopped trying to arrange it." },

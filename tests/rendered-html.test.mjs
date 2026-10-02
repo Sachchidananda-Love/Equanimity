@@ -29,6 +29,8 @@ test("server-renders the complete Yi experience", async () => {
   assert.match(html, /aria-label="Edit insights"/);
   assert.match(html, /Maintenance Yoga/);
   assert.match(html, /Work Out Yoga/);
+  assert.match(html, /Log new book/);
+  assert.match(html, /Books read/);
   assert.doesNotMatch(html, />Today</);
   assert.match(html, /Lunar phase/);
   assert.match(html, /Next full moon/);
@@ -90,7 +92,12 @@ test("keeps durable timers and responsive controls in the product source", async
   assert.match(page, /setPointerCapture/);
   assert.match(page, /elementsFromPoint/);
   assert.match(page, /cubic-bezier\(\.2,\.8,\.2,1\)/);
-  assert.match(page, /yi-insights-workspace-v1/);
+  assert.match(page, /yi-insights-workspace-v2/);
+  assert.match(page, /yi-books/);
+  assert.match(page, /BookLogModal/);
+  assert.match(page, /journalContexts/);
+  assert.match(css, /\.moon-orb/);
+  assert.match(css, /\.book-timeline/);
   assert.doesNotMatch(page, /Current streak/);
   assert.doesNotMatch(page, /At least 1 hr\/day/);
   assert.doesNotMatch(page, /At least 10 min\/day/);
