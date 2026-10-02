@@ -103,6 +103,8 @@ test("keeps durable timers and responsive controls in the product source", async
   assert.match(css, /--moon-shift/);
   assert.match(css, /\.book-timeline/);
   assert.match(css, /grid-auto-rows:170px/);
+  assert.match(css, /--compact-card-height:170px/);
+  assert.match(css, /height:calc\(var\(--compact-card-height\) \* 2 \+ var\(--dashboard-card-gap\)\)/);
   assert.match(css, /\.practice-total-summary[^}]*background:/);
   assert.doesNotMatch(page, /Current streak/);
   assert.doesNotMatch(page, /At least 1 hr\/day/);
