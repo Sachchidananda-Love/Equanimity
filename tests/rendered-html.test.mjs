@@ -105,6 +105,9 @@ test("keeps durable timers and responsive controls in the product source", async
   assert.match(css, /grid-auto-rows:170px/);
   assert.match(css, /--compact-card-height:170px/);
   assert.match(css, /height:calc\(var\(--compact-card-height\) \* 2 \+ var\(--dashboard-card-gap\)\)/);
+  assert.match(css, /Dashboard sizing system: small 1x1, medium 1x2, large 2x2/);
+  assert.match(css, /\.dashboard-insight-meditation[^}]*grid-column:span 1!important/);
+  assert.match(css, /\.dashboard-insight-practice[^}]*grid-column:span 2!important/);
   assert.match(css, /\.practice-total-summary[^}]*background:/);
   assert.doesNotMatch(page, /Current streak/);
   assert.doesNotMatch(page, /At least 1 hr\/day/);
