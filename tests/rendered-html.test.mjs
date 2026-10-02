@@ -28,6 +28,7 @@ test("server-renders the complete Yi experience", async () => {
   assert.match(html, /Journal prompt/);
   assert.match(html, /aria-label="Edit dashboard"/);
   assert.match(html, /Lunar phase/);
+  assert.match(html, /Next full moon/);
   assert.match(html, /Quick reflection/);
   assert.match(html, /Rotating cube of personal photos/);
   assert.match(html, /Five spiritual faculties/);
@@ -35,6 +36,7 @@ test("server-renders the complete Yi experience", async () => {
   assert.match(html, /Five hindrances/);
   assert.doesNotMatch(html, /Current streak/);
   assert.doesNotMatch(html, /At least 1 hr\/day/);
+  assert.doesNotMatch(html, /At least 10 min\/day/);
   assert.doesNotMatch(html, /What would help right now\?/);
   assert.doesNotMatch(html, /A thought to turn with/);
   assert.doesNotMatch(html, /Building your site|codex-preview/);
@@ -68,7 +70,15 @@ test("keeps durable timers and responsive controls in the product source", async
   assert.match(page, /PracticeRhythmChart/);
   assert.match(page, /Five spiritual faculties/);
   assert.match(page, /DefinitionModal/);
+  assert.match(page, /definition-pagination/);
   assert.match(page, /mini-gong-mark/);
+  assert.match(page, /JournalCalendar/);
+  assert.match(page, /EntryAssessmentDetail/);
+  assert.match(page, /ConfirmDeleteModal/);
+  assert.match(page, /suggestedEntryTitle/);
+  assert.match(page, /loggedAssessments/);
+  assert.match(page, /Widget archive/);
+  assert.match(page, /Next full moon/);
   assert.match(page, /dismissBackdrop/);
   assert.match(page, /saved-timer-open/);
   assert.match(page, /Back to practice/);
@@ -80,6 +90,7 @@ test("keeps durable timers and responsive controls in the product source", async
   assert.match(page, /yi-dashboard-v3-migrated/);
   assert.doesNotMatch(page, /Current streak/);
   assert.doesNotMatch(page, /At least 1 hr\/day/);
+  assert.doesNotMatch(page, /At least 10 min\/day/);
   assert.doesNotMatch(page, />Felt</);
   assert.match(css, /\.gong-mark:after/);
   assert.match(css, /\.segmented:before/);
@@ -89,6 +100,9 @@ test("keeps durable timers and responsive controls in the product source", async
   assert.match(css, /\.activity-history-chart/);
   assert.match(css, /\.cycle-tracking-chart/);
   assert.match(css, /\.mini-gong-mark/);
+  assert.match(css, /\.journal-calendar/);
+  assert.match(css, /\.archive-widget-list/);
+  assert.match(css, /\.cycle-analytics/);
   assert.match(css, /@media \(max-width:360px\)/);
   assert.match(css, /safe-area-inset-bottom/);
   assert.match(layout, /Yi — practice, cycle & wellbeing/);
