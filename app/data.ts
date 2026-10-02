@@ -79,7 +79,7 @@ export type CycleLog = {
   history: CycleDayLog[];
 };
 
-export type InsightWidgetId = "practice" | "cycle" | "factors" | "faculties" | "characteristics" | "hindrances" | "body" | "meditation" | "yoga";
+export type InsightWidgetId = "practice" | "cycle" | "factors" | "faculties" | "characteristics" | "hindrances" | "body" | "meditation" | "maintenance-yoga" | "workout-yoga";
 
 export const demoCycle = {
   day: 8,
@@ -98,29 +98,30 @@ export const demoTimers: TimerPreset[] = [
 
 export const demoActivities: ActivityPreset[] = [
   { id: 1, name: "Meditation", icon: "◌", color: "sage" },
-  { id: 2, name: "Yoga", icon: "⌁", color: "gold" },
-  { id: 3, name: "Workout", icon: "↯", color: "coral" },
-  { id: 4, name: "Walking", icon: "↟", color: "plum" },
+  { id: 2, name: "Maintenance Yoga", icon: "⌁", color: "gold" },
+  { id: 3, name: "Work Out Yoga", icon: "△", color: "coral" },
+  { id: 4, name: "Workout", icon: "↯", color: "coral" },
+  { id: 5, name: "Walking", icon: "↟", color: "plum" },
 ];
 
-export const defaultInsightWidgets: InsightWidgetId[] = ["practice", "cycle", "factors", "faculties", "characteristics", "hindrances", "meditation", "yoga"];
+export const defaultInsightWidgets: InsightWidgetId[] = ["practice", "cycle", "meditation", "maintenance-yoga", "workout-yoga", "factors", "faculties", "characteristics", "hindrances"];
 
 export const demoEntries: JournalEntry[] = [
   { id: 1, type: "Meditation", title: "Evening sit", date: "Sep 29 · 8:42 PM", duration: 20, mood: "Calm and spacious", note: "The breath softened once I stopped trying to arrange it." },
   { id: 2, type: "Gratitude", title: "Three small things", date: "Sep 29 · 9:05 AM", note: "Warm tea, the first red maple, and an unhurried conversation." },
-  { id: 3, type: "Yoga", title: "Slow morning flow", date: "Sep 28 · 7:15 AM", duration: 34, mood: "Grounded", note: "Hips felt open. Kept the pace gentle." },
+  { id: 3, type: "Maintenance Yoga", title: "Slow morning flow", date: "Sep 28 · 7:15 AM", duration: 34, mood: "Grounded", note: "Hips felt open. Kept the pace gentle." },
   { id: 4, type: "Period", title: "Cycle day 1", date: "Sep 23", note: "Light flow · mild cramps" },
   { id: 5, type: "Meditation", title: "Open awareness", date: "Sep 22 · 6:10 PM", duration: 26, mood: "Bright" },
 ];
 
 export const weeklyPractice = [
-  { day: "Thu", meditation: 12, yoga: 20 },
-  { day: "Fri", meditation: 20, yoga: 0 },
-  { day: "Sat", meditation: 8, yoga: 28 },
-  { day: "Sun", meditation: 24, yoga: 0 },
-  { day: "Mon", meditation: 10, yoga: 34 },
-  { day: "Tue", meditation: 18, yoga: 20 },
-  { day: "Wed", meditation: 14, yoga: 0 },
+  { day: "Thu", meditation: 12, maintenanceYoga: 20, workoutYoga: 0 },
+  { day: "Fri", meditation: 20, maintenanceYoga: 0, workoutYoga: 0 },
+  { day: "Sat", meditation: 8, maintenanceYoga: 0, workoutYoga: 28 },
+  { day: "Sun", meditation: 24, maintenanceYoga: 0, workoutYoga: 0 },
+  { day: "Mon", meditation: 10, maintenanceYoga: 34, workoutYoga: 0 },
+  { day: "Tue", meditation: 18, maintenanceYoga: 0, workoutYoga: 20 },
+  { day: "Wed", meditation: 14, maintenanceYoga: 0, workoutYoga: 0 },
 ];
 
 export const sevenFactors = ["Mindfulness", "Investigation", "Energy", "Rapture", "Tranquility", "Concentration", "Equanimity"];

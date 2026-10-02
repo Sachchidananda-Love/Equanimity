@@ -201,3 +201,25 @@ h3 { font-family:Iowan Old Style,Palatino Linotype,Georgia,serif; font-weight:50
 .entry-assessment-detail { margin-top:14px; }.mini-assessment-list { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px; }.mini-assessment-list>div { padding:9px; border-radius:11px; background:#edf2ed; }.mini-assessment-list span { display:flex; justify-content:space-between; gap:8px; color:var(--sage-dark); font-size:8px; }.mini-assessment-list span b { font-size:8px; }.mini-assessment-list i { display:block; height:4px; margin-top:6px; overflow:hidden; border-radius:999px; background:#d7dfd9; }.mini-assessment-list i em { display:block; height:100%; border-radius:inherit; background:var(--sage-dark); }.mini-assessment-list small { display:block; margin-top:6px; color:var(--muted); font-size:7px; line-height:1.35; }.assessment-improvement { margin:7px 0 0!important; padding:8px 10px; border-radius:10px; background:#f3ead8; color:#86642e!important; font-family:inherit!important; font-size:8px!important; }.confirm-delete { width:min(92vw,420px); align-self:center; border-radius:24px; }.confirm-delete>p:not(.eyebrow) { margin:8px 0 20px; color:var(--muted); font-size:10px; }.confirm-delete>div { display:flex; justify-content:flex-end; gap:10px; }.delete-confirm { border:0; border-radius:999px; padding:10px 17px; background:var(--coral); color:white; font-size:9px; font-weight:750; }.builder-name small { display:block; margin-top:5px; color:var(--muted); font-size:7px; font-weight:400; }
 .cycle-analytics .analytics-hero { grid-template-columns:1fr; align-items:stretch; }.cycle-analytics .analytics-hero>div:first-child { display:flex; align-items:baseline; gap:8px; }.cycle-analytics .analytics-hero>div:first-child strong { margin:0; font-size:26px; }.cycle-analytics .cycle-tracking-chart { min-width:0; min-height:240px; padding-bottom:48px; }.cycle-analytics .cycle-tracking-chart svg { height:190px; }
 @media (max-width:700px) { .archive-toolbar { align-items:stretch; flex-direction:column; }.archive-toolbar select { width:100%; }.year-grid { grid-template-columns:1fr; }.calendar-day,.calendar-blank { min-height:50px; padding:5px; }.mini-assessment-list { grid-template-columns:1fr; }.practice-total-summary { grid-column:1/-1; }.image-cube-card { aspect-ratio:1; }.cycle-analytics .cycle-tracking-chart svg { height:160px; } }
+
+/* Unified Insights workspace and distinct yoga tracks */
+.bottom-nav { grid-template-columns:repeat(3,1fr); }
+.dashboard-lunar,.practice-total-summary { grid-column:span 1; }
+.practice-total-summary>div { grid-template-columns:1fr; gap:6px; }
+.dashboard-shortcut.sage { background:var(--sage-dark); color:white; }
+.dashboard-shortcut.sage small,.dashboard-shortcut.sage>span { color:white; }
+.dashboard-grid.editing .dashboard-widget>*:not(.remove-widget):not(.drag-widget-handle) { pointer-events:none; }
+.info-button { position:relative; display:inline-block; box-sizing:border-box; padding:0; font-size:0; line-height:0; }
+.info-button>span { position:absolute; top:50%; left:50%; display:block; transform:translate(-50%,-50%); font-family:Arial,sans-serif; font-size:11px; font-style:normal; font-weight:700; line-height:1; }
+.factor-legend .info-button>span { font-size:8px; }
+.legend i.legend-coral { background:var(--coral); }
+.maintenance-yoga-bar { background:var(--gold); }
+.work-out-yoga-bar { background:var(--coral); }
+.activity-history-chart.maintenance-yoga .activity-history-bar i { background:var(--gold); }
+.activity-history-chart.work-out-yoga .activity-history-bar i { background:var(--coral); }
+.pill.maintenance-yoga,.entry-symbol.maintenance-yoga { background:var(--gold-pale); color:#8e692d; }
+.pill.work-out-yoga,.entry-symbol.work-out-yoga { background:var(--coral-pale); color:#a05e49; }
+.calendar-legend .maintenance-yoga,.calendar-day em.maintenance-yoga { background:var(--gold); }
+.calendar-legend .workout-yoga,.calendar-day em.workout-yoga { background:var(--coral); }
+.calendar-legend .journal,.calendar-day em.journal { background:#88729a; }
+@media (max-width:700px) { .dashboard-lunar,.practice-total-summary { grid-column:1; } }
