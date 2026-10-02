@@ -17,6 +17,7 @@ export type JournalEntry = {
   tags?: string[];
   lunarContext?: string;
   cycleContext?: string;
+  loggedAt?: number;
 };
 
 export type TimerPreset = {

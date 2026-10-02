@@ -234,3 +234,24 @@ h3 { font-family:Iowan Old Style,Palatino Linotype,Georgia,serif; font-weight:50
 .book-log-modal { max-height:92vh; overflow:auto; }.book-choice { display:grid; grid-template-columns:1fr 1fr; gap:10px; }.book-choice button,.active-book-options button { display:flex; flex-direction:column; align-items:flex-start; min-height:130px; padding:16px; border:1px solid var(--line); border-radius:17px; background:var(--card); text-align:left; }.book-choice span { color:#816c54; font-size:25px; }.book-choice b { margin-top:auto; }.book-choice small,.active-book-options small { margin-top:4px; color:var(--muted); font-size:8px; line-height:1.4; }.active-book-options { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px; margin:15px 0; }.active-book-options button { min-height:82px; }.active-book-options button.active { border-color:#816c54; background:#f0eadf; box-shadow:0 0 0 2px rgba(129,108,84,.12); }.book-congrats { padding:13px; border-radius:14px; background:#f0eadf; color:#665641; font-size:10px; line-height:1.55; }
 .entry-context { margin-top:5px!important; color:#78877f!important; font-size:7px!important; line-height:1.35; white-space:normal; }
 @media (max-width:600px) { .moon-orb { width:64px; height:64px; }.book-choice,.active-book-options { grid-template-columns:1fr; }.entry-context { max-width:190px; } }
+
+/* Compact dashboard geometry and true disc-overlap moon phases */
+@media (min-width:601px) {
+  .dashboard-grid { grid-auto-flow:dense; grid-auto-rows:170px; }
+  .dashboard-image-cube,.dashboard-daily-quote,.dashboard-insight-practice,.dashboard-insight-cycle,.dashboard-insight-factors,.dashboard-insight-faculties,.dashboard-insight-characteristics,.dashboard-insight-hindrances,.dashboard-insight-meditation,.dashboard-insight-maintenance-yoga,.dashboard-insight-workout-yoga,.dashboard-insight-books { grid-row:span 2; }
+  .dashboard-lunar,.dashboard-summary-time,.dashboard-summary-journal,.dashboard-summary-days,.dashboard-log-activity,.dashboard-log-book,.dashboard-cycle-checkin,.dashboard-quick-reflection,.dashboard-quick-prompt { grid-row:span 1; }
+  .dashboard-image-cube .image-cube-card { height:356px; aspect-ratio:auto; }
+}
+.lunar-card,.practice-total-summary { width:100%; min-height:170px; height:170px; box-sizing:border-box; }
+.lunar-card { padding:17px; gap:15px; }
+.lunar-card h2 { margin:3px 0 7px; font-size:19px; }.lunar-card small { margin-top:3px; }
+.practice-total-summary { display:flex; flex-direction:column; padding:17px; border-radius:20px; background:linear-gradient(135deg,#9d7142,#b78950); color:white; overflow:hidden; }
+.practice-total-summary>span { font-size:8px; opacity:.78; }.practice-total-summary>strong { display:block; margin:8px 0 6px; font-family:Iowan Old Style,Georgia,serif; font-size:27px; font-weight:500; }.practice-total-summary>strong small { font-size:12px; }.practice-total-summary>div { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:5px; margin-top:auto; }.practice-total-summary>div>span { min-width:0; padding:7px; }.practice-total-summary b { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:6px; }.practice-total-summary em { margin-top:2px; font-size:10px; }
+.moon-orb { width:68px; height:68px; }
+.moon-orb:after { z-index:2; opacity:.97; transform:translateX(var(--moon-shift)); transition:transform .5s ease; }
+.moon-orb.waning:after { transform:translateX(var(--moon-shift)); }
+.book-timeline em { background:var(--book-color,var(--gold)); }
+.log-book-button { border:0; border-radius:999px; padding:7px 10px; background:#816c54; color:white; font-size:8px; font-weight:750; }
+.factor-card .compact-ranges,.activity-stat-card .compact-ranges,.book-analytics-card .compact-ranges { margin-top:10px; }
+@media (min-width:601px) { .dashboard-insight-factors .assessment-chart,.dashboard-insight-faculties .assessment-chart,.dashboard-insight-characteristics .assessment-chart,.dashboard-insight-hindrances .assessment-chart { height:115px; }.dashboard-insight-factors .factor-overview,.dashboard-insight-faculties .factor-overview,.dashboard-insight-characteristics .factor-overview,.dashboard-insight-hindrances .factor-overview { margin-top:10px; } }
+@media (max-width:600px) { .dashboard-grid { grid-auto-rows:auto; }.dashboard-widget { grid-row:auto!important; }.dashboard-image-cube .image-cube-card { height:282px; aspect-ratio:auto; }.lunar-card,.practice-total-summary { height:170px; }.practice-total-summary>div { grid-template-columns:repeat(3,minmax(0,1fr)); } }

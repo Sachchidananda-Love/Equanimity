@@ -96,8 +96,14 @@ test("keeps durable timers and responsive controls in the product source", async
   assert.match(page, /yi-books/);
   assert.match(page, /BookLogModal/);
   assert.match(page, /journalContexts/);
+  assert.match(page, /loggedAt/);
+  assert.match(page, /Log book/);
+  assert.match(page, /No dated books overlap this range/);
   assert.match(css, /\.moon-orb/);
+  assert.match(css, /--moon-shift/);
   assert.match(css, /\.book-timeline/);
+  assert.match(css, /grid-auto-rows:170px/);
+  assert.match(css, /\.practice-total-summary[^}]*background:/);
   assert.doesNotMatch(page, /Current streak/);
   assert.doesNotMatch(page, /At least 1 hr\/day/);
   assert.doesNotMatch(page, /At least 10 min\/day/);
