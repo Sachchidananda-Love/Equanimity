@@ -48,7 +48,8 @@ test("server-renders the complete Yi experience", async () => {
 });
 
 test("keeps durable timers and responsive controls in the product source", async () => {
-  const [page, css, layout, quotes] = await Promise.all([
+  const [page, wrapper, css, layout, quotes] = await Promise.all([
+    readFile(new URL("../app/YiApp.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/globals.css", import.meta.url), "utf8"),
     readFile(new URL("../app/layout.tsx", import.meta.url), "utf8"),
@@ -97,6 +98,11 @@ test("keeps durable timers and responsive controls in the product source", async
   assert.match(page, /BookLogModal/);
   assert.match(page, /journalContexts/);
   assert.match(page, /loggedAt/);
+  assert.match(page, /lunarPhase\(new Date\(now\)\)/);
+  assert.match(page, /StableNowContext\.Provider value=\{stableNow\}/);
+  assert.doesNotMatch(page, /if \(id === "lunar"\).*lunarPhase\(\)/);
+  assert.match(wrapper, /dynamic = "force-dynamic"/);
+  assert.match(wrapper, /initialNow=\{Date\.now\(\)\}/);
   assert.match(page, /Log book/);
   assert.match(page, /No dated books overlap this range/);
   assert.match(css, /\.moon-orb/);
@@ -108,6 +114,8 @@ test("keeps durable timers and responsive controls in the product source", async
   assert.match(css, /Dashboard sizing system: small 1x1, medium 1x2, large 2x2/);
   assert.match(css, /\.dashboard-insight-meditation[^}]*grid-column:span 1!important/);
   assert.match(css, /\.dashboard-insight-practice[^}]*grid-column:span 2!important/);
+  assert.match(css, /\.dashboard-daily-quote>:not\(\.remove-widget\):not\(\.drag-widget-handle\)/);
+  assert.match(css, /\.dashboard-lunar>:not\(\.remove-widget\):not\(\.drag-widget-handle\)/);
   assert.match(css, /\.practice-total-summary[^}]*background:/);
   assert.doesNotMatch(page, /Current streak/);
   assert.doesNotMatch(page, /At least 1 hr\/day/);
