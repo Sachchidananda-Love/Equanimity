@@ -1,0 +1,30 @@
+@import "./fonts/fonts.css";
+
+:root {
+  --font-geist-sans: "Geist";
+  --font-geist-mono: "Geist Mono";
+  --safe-area-top: env(safe-area-inset-top, 0px);
+  --safe-area-right: env(safe-area-inset-right, 0px);
+  --safe-area-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-area-left: env(safe-area-inset-left, 0px);
+}
+
+/* Prerequisites only: keep natural document scrolling and existing card sizing. */
+body {
+  padding-top: var(--safe-area-top);
+  padding-left: var(--safe-area-left);
+  padding-right: var(--safe-area-right);
+}
+.bottom-nav {
+  padding-left: max(8px, var(--safe-area-left));
+  padding-right: max(8px, var(--safe-area-right));
+}
+@supports (height: 100dvh) {
+  .app-shell { min-height: 100dvh; }
+  .reflection-modal, .builder-modal, .analytics-modal { max-height: 94dvh; }
+  .cycle-log-modal, .widget-archive, .book-log-modal { max-height: 92dvh; }
+  .definition-modal { max-height: min(86dvh, 820px); }
+  @media (max-width: 600px) {
+    .definition-modal { max-height: 88dvh; }
+  }
+}

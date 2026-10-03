@@ -1,0 +1,29 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function privateOwner(uid) {
+      return request.auth != null && request.auth.uid == uid
+        && exists(/databases/$(database)/documents/privateAccess/$(uid))
+        && get(/databases/$(database)/documents/privateAccess/$(uid)).data.enabled == true;
+    }
+    function collectionAllowed(section) {
+      return section in ['settings', 'journalEntries', 'timerPresets', 'activityPresets', 'books', 'cycleEvents', 'healthRecords'];
+    }
+    function envelopeValid(uid) {
+      return request.resource.data.keys().hasOnly(['schemaVersion', 'ownerUid', 'record', 'deleted'])
+        && request.resource.data.schemaVersion == 1
+        && request.resource.data.ownerUid == uid
+        && request.resource.data.deleted is bool
+        && request.resource.data.record is map;
+    }
+    match /users/{uid}/{section}/{recordId} {
+      allow read: if privateOwner(uid) && collectionAllowed(section);
+      allow create, update: if privateOwner(uid) && collectionAllowed(section) && envelopeValid(uid);
+      // Phase 3A uses tombstones; no destructive client deletes.
+      allow delete: if false;
+    }
+    // The administrator creates privateAccess/{uid} in Console. Clients cannot
+    // grant themselves access, even if they register using the public Auth API.
+    match /{document=**} { allow read, write: if false; }
+  }
+}

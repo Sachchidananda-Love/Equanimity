@@ -1,14 +1,12 @@
 "use client";
 
-import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { flushSync } from "react-dom";
-import Image from "next/image";
 import {
   ActivityPreset,
   AssessmentValue,
   CycleDayLog,
   CycleLog,
-  demoWellnessConnector,
   fiveFaculties,
   fiveHindrances,
   InsightWidgetId,
@@ -19,50 +17,33 @@ import {
 } from "./data";
 import { practiceDefinitions } from "./definitions";
 import { dailyQuotes } from "./quotes";
+import type { RecordId } from "../src/domain/ids";
+import { createRecordId } from "../src/domain/ids";
+import type { BookRecord } from "../src/domain/journal/types";
+import type { StoredPractice, StoredQuoteRotation } from "../src/domain/practice/types";
+import { DISPLAY_TIME_ZONE, MILLISECONDS_PER_DAY, displayDateParts, dateOnlyTimestamp, displayDay, localCalendarDate } from "../src/domain/dates/calendar";
+import { cycleSummary, deriveCycleInsights, cycleFieldRecorded, cycleFieldText } from "../src/domain/cycle/calculations";
+import { createCycleDraft, updateCycleField, saveCycleDraft } from "../src/domain/cycle/records";
+import { localRepository } from "../src/adapters/local/repository";
+import { useAppData } from "../src/application/use-app-data";
+import { DataTools } from "../src/application/DataTools";
+import { reconcileManualHealthRecords } from "../src/services/health-service";
+import { assetUrl } from "../src/platform/runtime";
+import type { DataRepository } from "../src/services/repository-contracts";
+import { cloudSession } from "../src/application/cloud-runtime";
+import { CloudPanel } from "../src/application/CloudPanel";
 
 type Screen = "Practice" | "Journal" | "Insights";
 type PracticeMode = "Timer" | "Stopwatch" | "Saved";
 type ReflectionRequest = { duration: number; type?: string };
 
 const StableNowContext = createContext<number | null>(null);
-const DISPLAY_TIME_ZONE = "America/Toronto";
-const MILLISECONDS_PER_DAY = 86400000;
-const displayDateParts = new Intl.DateTimeFormat("en-CA", {
-  timeZone: DISPLAY_TIME_ZONE,
-  year: "numeric",
-  month: "2-digit",
-  day: "2-digit",
-});
-
 function useStableNow() {
   const now = useContext(StableNowContext);
   if (now === null) throw new Error("Stable render timestamp is unavailable");
   return now;
 }
 
-function dateOnlyParts(value: string) {
-  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
-  if (!match) return null;
-  return { year: Number(match[1]), month: Number(match[2]), day: Number(match[3]) };
-}
-
-function dateOnlyDay(value: string) {
-  const parts = dateOnlyParts(value);
-  return parts ? Math.floor(Date.UTC(parts.year, parts.month - 1, parts.day) / MILLISECONDS_PER_DAY) : null;
-}
-
-function dateOnlyTimestamp(value: string) {
-  const parts = dateOnlyParts(value);
-  return parts ? Date.UTC(parts.year, parts.month - 1, parts.day, 12) : Number.NaN;
-}
-
-function displayDay(timestamp: number) {
-  const parts = Object.fromEntries(displayDateParts.formatToParts(timestamp).map((part) => [part.type, part.value]));
-  return Math.floor(Date.UTC(Number(parts.year), Number(parts.month) - 1, Number(parts.day)) / MILLISECONDS_PER_DAY);
-}
-
-type StoredQuoteRotation = { signature: string; order: number[]; day: number; position: number };
-const quoteRotationKey = "yi-daily-quote-rotation";
 const quoteListSignature = dailyQuotes.reduce((hash, quote) => {
   for (let index = 0; index < quote.length; index += 1) hash = Math.imul(hash ^ quote.charCodeAt(index), 16777619);
   return hash;
@@ -161,22 +142,13 @@ const dashboardWidgetMeta: Record<DashboardWidgetId, { title: string; descriptio
 };
 const retiredDashboardWidgets = new Set<DashboardWidgetId>(["cycle", "practice-start", "daily-reflection", "timeline", "insight-body"]);
 const allDashboardWidgets = (Object.keys(dashboardWidgetMeta) as DashboardWidgetId[]).filter((id) => !retiredDashboardWidgets.has(id));
-type CubeMedia = { type: "image"; src: string };
-const cubeMedia: CubeMedia[] = [
-  ...Array.from({ length: 41 }, (_, index) => ({ type: "image" as const, src: `/cube-media/cube-${String(index + 1).padStart(2, "0")}.jpg` })),
-];
-const hiddenCubeFaceOrder = [2, 5, 3, 4, 0, 1];
-const initialCycleHistory: CycleDayLog[] = [
-  { id: 1, date: "2026-09-23", flow: "Light", cycleDayOne: true, temperature: 36.42, temperatureSource: "Tempdrop", questionableTemperature: false, cervicalMucus: "None / dry", mucusSensation: "Dry", cervixPosition: "Low", cervixFirmness: "Firm", cervixOpening: "Closed", ovulationTest: "Not tested", pregnancyTest: "Not tested", intercourse: false, symptoms: ["Cramps"], energy: 34, sexDrive: 28, pms: 42, disturbances: [], sleepScore: 79, sleepMinutes: 458, deepSleepMinutes: 82, sleepLatencyMinutes: 14, sleepInterruptions: 2 },
-  { id: 2, date: "2026-09-24", flow: "Medium", cycleDayOne: false, temperature: 36.39, temperatureSource: "Tempdrop", questionableTemperature: false, cervicalMucus: "None / dry", mucusSensation: "Dry", cervixPosition: "Low", cervixFirmness: "Firm", cervixOpening: "Closed", ovulationTest: "Not tested", pregnancyTest: "Not tested", intercourse: false, symptoms: ["Cramps", "Fatigue"], energy: 31, sexDrive: 24, pms: 35, disturbances: [], sleepScore: 74, sleepMinutes: 431, deepSleepMinutes: 76, sleepLatencyMinutes: 18, sleepInterruptions: 3 },
-  { id: 3, date: "2026-09-25", flow: "Medium", cycleDayOne: false, temperature: 36.41, temperatureSource: "Tempdrop", questionableTemperature: false, cervicalMucus: "Sticky", mucusSensation: "Damp", cervixPosition: "Low", cervixFirmness: "Firm", cervixOpening: "Closed", ovulationTest: "Negative", pregnancyTest: "Not tested", intercourse: false, symptoms: ["Bloating"], energy: 43, sexDrive: 31, pms: 27, disturbances: [], sleepScore: 82, sleepMinutes: 472, deepSleepMinutes: 91, sleepLatencyMinutes: 11, sleepInterruptions: 1 },
-  { id: 4, date: "2026-09-26", flow: "Light", cycleDayOne: false, temperature: 36.38, temperatureSource: "Tempdrop", questionableTemperature: false, cervicalMucus: "Creamy", mucusSensation: "Damp", cervixPosition: "Medium", cervixFirmness: "Medium", cervixOpening: "Medium", ovulationTest: "Low", pregnancyTest: "Not tested", intercourse: true, symptoms: [], energy: 56, sexDrive: 46, pms: 18, disturbances: [], sleepScore: 86, sleepMinutes: 489, deepSleepMinutes: 97, sleepLatencyMinutes: 9, sleepInterruptions: 1 },
-  { id: 5, date: "2026-09-27", flow: "Spotting", cycleDayOne: false, temperature: 36.44, temperatureSource: "Tempdrop", questionableTemperature: false, cervicalMucus: "Creamy", mucusSensation: "Wet", cervixPosition: "Medium", cervixFirmness: "Medium", cervixOpening: "Medium", ovulationTest: "High", pregnancyTest: "Not tested", intercourse: false, symptoms: ["Headache"], energy: 62, sexDrive: 58, pms: 14, disturbances: ["Alcohol"], sleepScore: 70, sleepMinutes: 405, deepSleepMinutes: 63, sleepLatencyMinutes: 24, sleepInterruptions: 4 },
-  { id: 6, date: "2026-09-28", flow: "None", cycleDayOne: false, temperature: 36.47, temperatureSource: "Tempdrop", questionableTemperature: false, cervicalMucus: "Watery", mucusSensation: "Wet", cervixPosition: "High", cervixFirmness: "Soft", cervixOpening: "Open", ovulationTest: "Peak", pregnancyTest: "Not tested", intercourse: true, symptoms: [], energy: 72, sexDrive: 73, pms: 10, disturbances: [], sleepScore: 88, sleepMinutes: 496, deepSleepMinutes: 104, sleepLatencyMinutes: 8, sleepInterruptions: 1 },
-  { id: 7, date: "2026-09-29", flow: "None", cycleDayOne: false, temperature: 36.51, temperatureSource: "Tempdrop", questionableTemperature: false, cervicalMucus: "Egg white", mucusSensation: "Slippery", cervixPosition: "High", cervixFirmness: "Soft", cervixOpening: "Open", ovulationTest: "Positive", pregnancyTest: "Not tested", intercourse: false, symptoms: ["Tenderness"], energy: 76, sexDrive: 81, pms: 8, disturbances: [], sleepScore: 90, sleepMinutes: 501, deepSleepMinutes: 108, sleepLatencyMinutes: 7, sleepInterruptions: 1 },
-  { id: 8, date: "2026-09-30", flow: "None", cycleDayOne: false, temperature: 36.58, temperatureSource: "Tempdrop", questionableTemperature: false, cervicalMucus: "Creamy", mucusSensation: "Damp", cervixPosition: "Medium", cervixFirmness: "Medium", cervixOpening: "Closed", ovulationTest: "High", pregnancyTest: "Not tested", intercourse: false, symptoms: [], energy: 69, sexDrive: 64, pms: 12, disturbances: [], sleepScore: 84, sleepMinutes: 475, deepSleepMinutes: 94, sleepLatencyMinutes: 12, sleepInterruptions: 2 },
-];
-const initialCycleLog: CycleLog = { lastPeriod: "2026-09-23", averageCycle: 29, averagePeriod: 5, flow: "None", symptoms: [], temperature: 36.58, history: initialCycleHistory };
+type CubeMedia = { type: "image"; src: string } | { type: "video"; src: string; durationMs: number };
+const cubeImages: CubeMedia[] = Array.from({ length: 43 }, (_, index) => ({
+  type: "image" as const,
+  src: `/cube-media/picture-${String(index + 1).padStart(2, "0")}.jpg`,
+}));
+const cubeVideo: CubeMedia = { type: "video", src: "/cube-media/wedding.mov", durationMs: 22000 };
+const cubeRotationDurations = [3000, 4000, 5000, 6000, 7000, 8000];
 const journalPrompts = [
   "Where did you feel most at home in yourself this week?",
   "What are you carrying that you could set down for today?",
@@ -185,22 +157,6 @@ const journalPrompts = [
   "What changed when you stopped trying to change the moment?",
   "What would gentleness look like for the rest of this day?",
 ];
-type StoredPractice = {
-  mode: "Timer" | "Stopwatch";
-  duration: number;
-  endAt?: number;
-  startedAt?: number;
-  openingGong: string;
-  closingGong: string;
-  intervalEnabled: boolean;
-  intervalMinutes: number;
-  intervalGong: string;
-  customGongs: number[];
-  customGongSounds: string[];
-};
-type BookRecord = { id: number; title: string; author?: string; startedOn?: string; finishedOn?: string; yearRead?: number; finished?: boolean; assessments?: Record<string, AssessmentValue> };
-const activePracticeKey = "yi-active-practice";
-
 function formatTime(totalSeconds: number, includeHours = false) {
   const seconds = Math.max(0, totalSeconds); const hours = Math.floor(seconds / 3600);
   const mins = Math.floor((seconds % 3600) / 60); const secs = seconds % 60;
@@ -211,15 +167,29 @@ function formatTime(totalSeconds: number, includeHours = false) {
 function slug(value: string) { return value.toLowerCase().replace(/[^a-z0-9]+/g, "-"); }
 function dismissBackdrop(event: React.PointerEvent<HTMLDivElement>, onClose: () => void) { if (event.target === event.currentTarget) onClose(); }
 
+let activeTone: HTMLAudioElement | null = null;
+
 function tone(gong = gongNames[0]) {
   try {
-    const audio = new Audio(gongSources[normalizedGongName(gong)]); audio.volume = .82; void audio.play().catch(() => undefined);
+    if (activeTone) {
+      activeTone.pause();
+      activeTone.currentTime = 0;
+    }
+    const audio = new Audio(assetUrl(gongSources[normalizedGongName(gong)]));
+    activeTone = audio;
+    audio.volume = 0.82;
+    audio.onended = () => {
+      if (activeTone === audio) activeTone = null;
+    };
+    void audio.play().catch(() => {
+      if (activeTone === audio) activeTone = null;
+    });
   } catch { /* sound is an enhancement */ }
 }
 
-function Navigation({ active, setActive }: { active: Screen; setActive: (screen: Screen) => void }) {
+function Navigation({ active, setActive, cloud = false }: { active: Screen; setActive: (screen: Screen) => void; cloud?: boolean }) {
   const items = navItems.map((item) => <button key={item.label} onClick={() => setActive(item.label)} className={active === item.label ? "active" : ""} aria-current={active === item.label ? "page" : undefined}><span className="nav-icon" aria-hidden="true">{item.icon}</span><span>{item.label}</span></button>);
-  return <><aside className="side-rail"><button className="brand-mark" onClick={() => setActive("Insights")} aria-label="Yi insights">yi</button><nav aria-label="Primary navigation">{items}</nav><div className="sync-status"><i />Saved on this device</div></aside><nav className="bottom-nav" aria-label="Primary navigation">{items}</nav></>;
+  return <><aside className="side-rail"><button className="brand-mark" onClick={() => setActive("Insights")} aria-label="Yi insights">yi</button><nav aria-label="Primary navigation">{items}</nav><div className="sync-status"><i />{cloud ? "Private cloud data" : "Saved on this device"}</div></aside><nav className="bottom-nav" aria-label="Primary navigation">{items}</nav></>;
 }
 
 function PageHeader({ eyebrow, title, action }: { eyebrow: string; title: string; action?: React.ReactNode }) {
@@ -264,19 +234,11 @@ function lunarPhase(date: Date) {
   return { name: phases[index], glyph: glyphs[index], illumination, waxing: age < synodic / 2, age: Math.round(age * 10) / 10, nextFullMoon: nextFullMoon.toLocaleDateString("en-CA", { month: "long", day: "numeric", timeZone: "America/Toronto" }) };
 }
 
-function cycleSummary(log: CycleLog, at: Date) {
-  const lastDay = dateOnlyDay(log.lastPeriod);
-  const day = Math.max(1, lastDay === null ? 1 : displayDay(at.getTime()) - lastDay + 1);
-  const ovulation = Math.max(8, log.averageCycle - 14); const fertileStart = ovulation - 5;
-  const phase = day <= log.averagePeriod ? "Menstrual phase" : day < ovulation - 1 ? "Follicular phase" : day <= ovulation + 1 ? "Ovulation window" : "Luteal phase";
-  return { day, phase, nextPeriodIn: Math.max(0, log.averageCycle - day + 1), fertileText: day < fertileStart ? `Fertile window estimated in ${fertileStart - day} days` : day <= ovulation + 1 ? "Within estimated fertile window" : "Estimated fertile window has passed" };
-}
-
 function CycleCard({ cycleLog, compact = false, onLog, onExpand }: { cycleLog: CycleLog; compact?: boolean; onLog?: () => void; onExpand?: () => void }) {
   const now = useStableNow(); const cycle = cycleSummary(cycleLog, new Date(now)); const latest = cycleLog.history?.at(-1);
   return <div className={`cycle-card card ${compact ? "compact" : ""} ${onExpand ? "expandable-widget" : ""}`} role={onExpand ? "button" : undefined} tabIndex={onExpand ? 0 : undefined} onClick={onExpand} onKeyDown={(event) => { if (onExpand && (event.key === "Enter" || event.key === " ")) onExpand(); }}>
     <div className="card-heading"><div><p className="eyebrow">Body & cycle · day {cycle.day}</p><h2>{cycle.phase}</h2></div><div className="card-actions">{onExpand && <button className="expand-button" onClick={(event) => { event.stopPropagation(); onExpand(); }}>Expand ↗</button>}{onLog ? <button className="log-cycle-button" onClick={(event) => { event.stopPropagation(); onLog(); }}>＋ Log</button> : <span className="source-badge">Estimated</span>}</div></div>
-    <div className="cycle-content"><div className="cycle-ring" style={{ "--cycle-progress": `${Math.min(100, cycle.day / cycleLog.averageCycle * 100)}%` } as React.CSSProperties}><div><strong>{cycle.day}</strong><span>of {cycleLog.averageCycle}</span></div></div><div className="cycle-copy"><strong>{cycle.nextPeriodIn} days</strong><span>until your next period</span><p>{cycle.fertileText}</p>{cycleLog.temperature && <small>Latest BBT {cycleLog.temperature.toFixed(2)}°C · {latest?.temperatureSource ?? "manual"}</small>}{latest && <small>{latest.cervicalMucus} mucus · {latest.sleepMinutes ? `${Math.floor(latest.sleepMinutes / 60)}h ${latest.sleepMinutes % 60}m sleep` : "sleep not logged"}</small>}</div></div>
+    <div className="cycle-content"><div className="cycle-ring" style={{ "--cycle-progress": `${Math.min(100, cycle.day / cycleLog.averageCycle * 100)}%` } as React.CSSProperties}><div><strong>{cycle.day}</strong><span>of {cycleLog.averageCycle}</span></div></div><div className="cycle-copy"><strong>{cycle.day ? `${cycle.nextPeriodIn} days` : "—"}</strong><span>until your next period</span><p>{cycle.fertileText}</p>{cycleLog.temperature && <small>Latest BBT {cycleLog.temperature.toFixed(2)}°C · {latest?.temperatureSource ?? "manual"}</small>}{latest && <small>{cycleFieldText(latest, "cervicalMucus")} mucus · {latest.sleepMinutes ? `${Math.floor(latest.sleepMinutes / 60)}h ${latest.sleepMinutes % 60}m sleep` : "sleep not logged"}</small>}</div></div>
     <div className="cycle-note"><span>◉</span> Estimates are for awareness only and cannot identify a zero-risk day for pregnancy.</div>
   </div>;
 }
@@ -284,18 +246,143 @@ function CycleCard({ cycleLog, compact = false, onLog, onExpand }: { cycleLog: C
 function CycleTrackingChart({ history }: { history: CycleDayLog[] }) {
   const points = history.slice(-30); const temps = points.map((item) => item.temperature).filter((value): value is number => typeof value === "number"); const min = Math.min(...temps, 36); const max = Math.max(...temps, 37); const mucusScore: Record<CycleDayLog["cervicalMucus"], number> = { "None / dry": 0, Sticky: 1, Creamy: 2, Watery: 3, "Egg white": 4 };
   const coords = points.map((item, index) => ({ x: points.length === 1 ? 50 : index / Math.max(1, points.length - 1) * 100, y: typeof item.temperature === "number" ? 92 - (item.temperature - min) / Math.max(.1, max - min) * 74 : null }));
-  return <div className="cycle-tracking-chart" aria-label="Temperature and cervical mucus history"><svg viewBox="0 0 100 100" preserveAspectRatio="none"><g className="cycle-grid"><line x1="0" x2="100" y1="18" y2="18" /><line x1="0" x2="100" y1="55" y2="55" /><line x1="0" x2="100" y1="92" y2="92" /></g><polyline className="temperature-line" points={coords.filter((point) => point.y !== null).map((point) => `${point.x},${point.y}`).join(" ")} />{coords.map((point, index) => point.y === null ? null : <circle key={points[index].id} cx={point.x} cy={point.y} r="1.5" className={points[index].questionableTemperature ? "questionable" : ""} />)}</svg><div className="mucus-track">{points.map((item) => <i key={item.id} title={`${item.date}: ${item.cervicalMucus}`} style={{ height: `${5 + mucusScore[item.cervicalMucus] * 6}px` }} />)}</div><div className="cycle-chart-legend"><span><i />Temperature</span><span><i />Cervical mucus</span></div>{points.length === 0 && <div className="chart-empty"><b>No cycle observations yet</b><small>Save a check-in to begin this chart.</small></div>}</div>;
-}
-
-function deriveCycleInsights(history: CycleDayLog[]) {
-  const temperatures = history.filter((item) => typeof item.temperature === "number" && !item.questionableTemperature); const baseline = temperatures.slice(-9, -3).map((item) => item.temperature as number); const recent = temperatures.slice(-3).map((item) => item.temperature as number); const coverline = baseline.length ? Math.max(...baseline) + .05 : null; const sustainedShift = coverline !== null && recent.length === 3 && recent.every((temperature) => temperature > coverline); const peakMucus = [...history].reverse().find((item) => item.cervicalMucus === "Egg white" || item.cervicalMucus === "Watery"); const sleep = history.map((item) => item.sleepMinutes).filter((value): value is number => typeof value === "number"); const symptomCounts = new Map<string, number>(); history.forEach((item) => item.symptoms.forEach((symptom) => symptomCounts.set(symptom, (symptomCounts.get(symptom) ?? 0) + 1))); const commonSymptoms = [...symptomCounts.entries()].sort((a, b) => b[1] - a[1]).slice(0, 3).map(([symptom]) => symptom);
-  return { coverline, sustainedShift, peakMucus, averageSleep: sleep.length ? Math.round(sleep.reduce((sum, value) => sum + value, 0) / sleep.length) : null, commonSymptoms };
+  return <div className="cycle-tracking-chart" aria-label="Temperature and cervical mucus history"><svg viewBox="0 0 100 100" preserveAspectRatio="none"><g className="cycle-grid"><line x1="0" x2="100" y1="18" y2="18" /><line x1="0" x2="100" y1="55" y2="55" /><line x1="0" x2="100" y1="92" y2="92" /></g><polyline className="temperature-line" points={coords.filter((point) => point.y !== null).map((point) => `${point.x},${point.y}`).join(" ")} />{coords.map((point, index) => point.y === null ? null : <circle key={points[index].id} cx={point.x} cy={point.y} r="1.5" className={points[index].questionableTemperature ? "questionable" : ""} />)}</svg><div className="mucus-track">{points.map((item) => <i key={item.id} title={`${item.date}: ${item.cervicalMucus}`} style={{ height: `${cycleFieldRecorded(item, "cervicalMucus") ? 5 + mucusScore[item.cervicalMucus] * 6 : 0}px` }} />)}</div><div className="cycle-chart-legend"><span><i />Temperature</span><span><i />Cervical mucus</span></div>{points.length === 0 && <div className="chart-empty"><b>No cycle observations yet</b><small>Save a check-in to begin this chart.</small></div>}</div>;
 }
 
 function ArtCube() {
-  const [faces, setFaces] = useState<CubeMedia[]>(() => cubeMedia.slice(0, 6)); const nextMedia = useRef(6); const nextHiddenFace = useRef(0);
-  useEffect(() => { const timer = window.setInterval(() => { setFaces((current) => { const next = [...current]; const faceIndex = hiddenCubeFaceOrder[nextHiddenFace.current % hiddenCubeFaceOrder.length]; next[faceIndex] = cubeMedia[nextMedia.current % cubeMedia.length]; nextMedia.current += 1; nextHiddenFace.current += 1; return next; }); }, 2800); return () => window.clearInterval(timer); }, []);
-  return <div className="cube-scene" aria-label="Rotating cube of personal photos"><div className="cube-spin-x"><div className="cube-spin-y"><div className="cube-spin-z"><div className="art-cube">{faces.map((media, index) => <div className={`cube-face face-${index + 1}`} key={`${index}-${media.src}`}><Image src={media.src} alt="" fill sizes="145px" quality={35} unoptimized loading="eager" /></div>)}</div></div></div></div></div>;
+  const [faces, setFaces] = useState<CubeMedia[]>([]);
+  const [ready, setReady] = useState(false);
+  const mediaOrder = useRef<CubeMedia[]>([]);
+  const decodedImages = useRef(new Map<string, HTMLImageElement>());
+  const nextMedia = useRef(6);
+  const faceTimers = useRef<Array<number | null>>(Array(6).fill(null));
+  const advanceFaceRef = useRef<((faceIndex: number) => void) | null>(null);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return undefined;
+
+    let cancelled = false;
+    const preloadImage = async (media: CubeMedia): Promise<CubeMedia | null> => {
+      if (media.type !== "image") return null;
+      const image = new window.Image();
+      image.decoding = "async";
+      const loaded = await new Promise<boolean>((resolve) => {
+        image.onload = () => resolve(true);
+        image.onerror = () => resolve(false);
+        image.src = assetUrl(media.src);
+        if (image.complete) resolve(image.naturalWidth > 0);
+      });
+      if (!loaded) return null;
+      try {
+        await image.decode();
+      } catch {
+        if (!image.complete || image.naturalWidth === 0) return null;
+      }
+      if (image.naturalWidth === 0) return null;
+      decodedImages.current.set(media.src, image);
+      return media;
+    };
+
+    const preloadMedia = async () => {
+      const loadedImages: CubeMedia[] = [];
+      for (let index = 0; index < cubeImages.length; index += 15) {
+        const batch = cubeImages.slice(index, index + 15);
+        const loadedBatch = await Promise.all(batch.map(async (media) => {
+        try {
+          return await preloadImage(media);
+        } catch {
+          return null;
+        }
+        }));
+        loadedImages.push(...loadedBatch.filter((media): media is CubeMedia => media !== null));
+        if (cancelled) return;
+      }
+
+      let videoLoaded = false;
+      if (typeof document !== "undefined") {
+        try {
+          const video = document.createElement("video");
+          video.preload = "auto";
+          video.muted = true;
+          video.playsInline = true;
+          videoLoaded = await new Promise<boolean>((resolve) => {
+            video.onloadeddata = () => resolve(true);
+            video.onerror = () => resolve(false);
+            video.src = assetUrl(cubeVideo.src);
+            video.load();
+          });
+        } catch {
+          videoLoaded = false;
+        }
+      }
+
+      if (!cancelled && loadedImages.length > 0) {
+        mediaOrder.current = [...loadedImages];
+        if (videoLoaded) mediaOrder.current.push(cubeVideo);
+        setReady(true);
+      }
+    };
+
+    void preloadMedia();
+    return () => {
+      cancelled = true;
+      faceTimers.current.forEach((timer) => {
+        if (timer !== null) window.clearTimeout(timer);
+      });
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!ready || typeof window === "undefined") return;
+
+    const shuffle = () => {
+      const shuffled: CubeMedia[] = [...mediaOrder.current.filter((media) => media.type === "image")];
+      for (let index = shuffled.length - 1; index > 0; index -= 1) {
+        const swap = Math.floor(Math.random() * (index + 1));
+        [shuffled[index], shuffled[swap]] = [shuffled[swap], shuffled[index]];
+      }
+      const video = mediaOrder.current.find((media) => media.type === "video");
+      if (video) shuffled.push(video);
+      mediaOrder.current = shuffled;
+    };
+    shuffle();
+    const initialFaces = Array.from({ length: 6 }, (_, index) => mediaOrder.current[index % mediaOrder.current.length]);
+    setFaces(initialFaces);
+    nextMedia.current = 6 % mediaOrder.current.length;
+
+    const advanceFace = (faceIndex: number) => {
+      if (nextMedia.current >= mediaOrder.current.length) {
+        shuffle();
+        nextMedia.current = 0;
+      }
+      const next = mediaOrder.current[nextMedia.current];
+      setFaces((current) => current.map((media, index) => index === faceIndex ? next : media));
+      nextMedia.current += 1;
+      if (next.type === "image") {
+        faceTimers.current[faceIndex] = window.setTimeout(
+          () => advanceFace(faceIndex),
+          cubeRotationDurations[faceIndex],
+        );
+      }
+    };
+
+    advanceFaceRef.current = advanceFace;
+    faceTimers.current = cubeRotationDurations.map((duration, faceIndex) =>
+      window.setTimeout(() => advanceFace(faceIndex), duration),
+    );
+    return () => {
+      faceTimers.current.forEach((timer) => {
+        if (timer !== null) window.clearTimeout(timer);
+      });
+    };
+  }, [ready]);
+
+  return <div className="cube-scene" aria-label="Rotating cube of personal photos"><div className="art-cube">{faces.map((media, index) => {
+    const imageSrc = media?.type === "image" ? media.src : "/cube-media/picture-01.jpg";
+    return <div className={`cube-face face-${index + 1}`} key={`${index}-${media?.type ?? "empty"}-${media?.src ?? "fallback"}`} style={{ backgroundImage: `url("${assetUrl(imageSrc)}")` }}>
+      {media?.type === "video" && <video src={assetUrl(media.src)} poster={assetUrl("/cube-media/picture-01.jpg")} autoPlay muted playsInline style={{ visibility: "hidden" }} onPlaying={(event) => { event.currentTarget.style.visibility = "visible"; }} onWaiting={(event) => { event.currentTarget.style.visibility = "hidden"; }} onEnded={() => advanceFaceRef.current?.(index)} onError={(event) => { event.currentTarget.style.display = "none"; advanceFaceRef.current?.(index); }} />}
+    </div>;
+  })}</div></div>;
 }
 
 function InsightSummaryCard({ id, entries }: { id: Extract<DashboardWidgetId, `summary-${string}`>; entries: JournalEntry[] }) {
@@ -321,19 +408,19 @@ function InsightWidgetCard({ id, entries, cycleLog, onExpand }: { id: InsightWid
 function widgetCategory(id: DashboardWidgetId) { if (id.startsWith("insight-")) return "Analytics"; if (id.startsWith("summary-")) return "Summaries"; return "Daily tools"; }
 
 function BookAnalyticsCard({ books, onExpand, onLog }: { books: BookRecord[]; onExpand?: () => void; onLog?: () => void }) {
-  const now = useStableNow(); const [range, setRange] = useState("1yr"); const ranges = ["7d", "30d", "90d", "1yr", "All"]; const cutoff = rangeCutoff(range, now); const dated = books.filter((book) => { if (!book.startedOn && !book.finishedOn) return false; const start = book.startedOn ? dateOnlyTimestamp(book.startedOn) : 0; const end = book.finishedOn ? dateOnlyTimestamp(book.finishedOn) : now; return !cutoff || end >= cutoff || start >= cutoff; }); const times = dated.flatMap((book) => [book.startedOn, book.finishedOn].filter(Boolean).map((value) => dateOnlyTimestamp(value))); const min = cutoff || (times.length ? Math.min(...times) : now); const max = times.length ? Math.max(...times, now) : now + 1; const span = Math.max(MILLISECONDS_PER_DAY, max - min);
+  const now = useStableNow(); const [range, setRange] = useState("1yr"); const ranges = ["7d", "30d", "90d", "1yr", "All"]; const cutoff = rangeCutoff(range, now); const dated = books.filter((book) => { if (!book.startedOn && !book.finishedOn) return false; const start = book.startedOn ? dateOnlyTimestamp(book.startedOn) : 0; const end = book.finishedOn ? dateOnlyTimestamp(book.finishedOn) : now; return !cutoff || end >= cutoff || start >= cutoff; }); const times = dated.flatMap((book) => [book.startedOn, book.finishedOn].filter((value): value is string => typeof value === "string").map((value) => dateOnlyTimestamp(value))); const min = cutoff || (times.length ? Math.min(...times) : now); const max = times.length ? Math.max(...times, now) : now + 1; const span = Math.max(MILLISECONDS_PER_DAY, max - min);
   // The card remains fully keyboard accessible through its explicit Expand button.
   // eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions
   return <article className={`book-analytics-card card ${onExpand ? "expandable-widget" : ""}`} role={onExpand ? "button" : undefined} tabIndex={onExpand ? 0 : undefined} onClick={onExpand} onKeyDown={(event) => { if (onExpand && (event.key === "Enter" || event.key === " ")) onExpand(); }}><div className="card-heading"><div><p className="eyebrow">Reading life</p><h2>Books read</h2></div><div className="card-actions">{onLog && <button className="log-book-button" onClick={(event) => { event.stopPropagation(); onLog(); }}>＋ Log book</button>}{onExpand && <button className="expand-button" onClick={(event) => { event.stopPropagation(); onExpand(); }}>Expand ↗</button>}</div></div><div className="range-tabs compact-ranges" style={{ "--range-offset": `${ranges.indexOf(range) * 100}%` } as React.CSSProperties}>{ranges.map((item) => <button key={item} className={range === item ? "active" : ""} onClick={(event) => { event.stopPropagation(); setRange(item); }}>{item}</button>)}</div><div className="book-timeline">{dated.slice(-8).map((book, index) => { const start = book.startedOn ? Math.max(min, dateOnlyTimestamp(book.startedOn)) : book.finishedOn ? dateOnlyTimestamp(book.finishedOn) : min; const end = book.finishedOn ? dateOnlyTimestamp(book.finishedOn) : now; return <div key={book.id}><span>{book.title}</span><i><em style={{ "--book-color": patternColors[index % patternColors.length], marginLeft: `${Math.max(0, (start - min) / span * 100)}%`, width: `${Math.max(3, (end - start) / span * 100)}%` } as React.CSSProperties} /></i></div>; })}{dated.length === 0 && <p>No dated books overlap this range.</p>}</div><div className="book-list">{books.slice(-4).reverse().map((book) => <div key={book.id}><span><b>{book.title}</b><small>{book.author || (book.finished ? "Finished" : "In progress")}</small></span><em>{book.finishedOn ? new Date(dateOnlyTimestamp(book.finishedOn)).toLocaleDateString("en-CA", { month: "short", year: "numeric", timeZone: DISPLAY_TIME_ZONE }) : book.yearRead || (book.finished ? "Finished" : "Reading")}</em></div>)}</div></article>;
 }
 
 function BookLogModal({ books, onSave, onClose }: { books: BookRecord[]; onSave: (book: BookRecord) => void; onClose: () => void }) {
-  const [step, setStep] = useState<"choose" | "start" | "finish" | "congrats">("choose"); const [selected, setSelected] = useState<number | "manual" | null>(null); const [title, setTitle] = useState(""); const [author, setAuthor] = useState(""); const [startedOn, setStartedOn] = useState(() => new Date().toLocaleDateString("en-CA")); const [finishedOn, setFinishedOn] = useState(""); const [yearRead, setYearRead] = useState<number | "">(""); const [draft, setDraft] = useState<BookRecord | null>(null); const [assessments, setAssessments] = useState<Record<string, AssessmentValue>>(() => makeAssessments()); const [assessmentActive, setAssessmentActive] = useState(false); const activeBooks = books.filter((book) => book.startedOn && !book.finished);
-  const chooseBook = (value: number | "manual") => { setSelected(value); if (value !== "manual") { const book = books.find((item) => item.id === value); if (book) { setTitle(book.title); setAuthor(book.author ?? ""); setStartedOn(book.startedOn ?? ""); } } else { setTitle(""); setAuthor(""); setStartedOn(""); } };
-  const finishBook = () => { if (!title.trim()) return; const existing = typeof selected === "number" ? books.find((book) => book.id === selected) : undefined; const book: BookRecord = { ...existing, id: existing?.id ?? Date.now(), title: title.trim(), author: author.trim() || undefined, startedOn: startedOn || undefined, finishedOn: finishedOn || undefined, yearRead: yearRead || (finishedOn ? new Date(`${finishedOn}T12:00:00`).getFullYear() : undefined), finished: true }; setDraft(book); setStep("congrats"); };
+  const [step, setStep] = useState<"choose" | "start" | "finish" | "congrats">("choose"); const [selected, setSelected] = useState<RecordId | null>(null); const [title, setTitle] = useState(""); const [author, setAuthor] = useState(""); const [startedOn, setStartedOn] = useState(() => new Date().toLocaleDateString("en-CA")); const [finishedOn, setFinishedOn] = useState(""); const [yearRead, setYearRead] = useState<number | "">(""); const [draft, setDraft] = useState<BookRecord | null>(null); const [assessments, setAssessments] = useState<Record<string, AssessmentValue>>(() => makeAssessments()); const [assessmentActive, setAssessmentActive] = useState(false); const activeBooks = books.filter((book) => book.startedOn && !book.finished);
+  const chooseBook = (value: RecordId) => { setSelected(value); if (value !== "manual") { const book = books.find((item) => item.id === value); if (book) { setTitle(book.title); setAuthor(book.author ?? ""); setStartedOn(book.startedOn ?? ""); } } else { setTitle(""); setAuthor(""); setStartedOn(""); } };
+  const finishBook = () => { if (!title.trim()) return; const existing = selected !== "manual" && selected !== null ? books.find((book) => book.id === selected) : undefined; const book: BookRecord = { ...existing, id: existing?.id ?? createRecordId(), title: title.trim(), author: author.trim() || undefined, startedOn: startedOn || undefined, finishedOn: finishedOn || undefined, yearRead: yearRead || (finishedOn ? new Date(`${finishedOn}T12:00:00`).getFullYear() : undefined), finished: true }; setDraft(book); setStep("congrats"); };
   // Focusing the title is intentional when the user explicitly opens the start-book flow.
   // eslint-disable-next-line jsx-a11y/no-autofocus
-  return <div className="modal-backdrop" onPointerDown={(event) => dismissBackdrop(event, onClose)}><section className="builder-modal book-log-modal"><header className="modal-header"><div><p className="eyebrow">Reading journal</p><h2>{step === "choose" ? "Log a book" : step === "start" ? "Start a book" : step === "finish" ? "Finish a book" : `Congratulations on finishing ${draft?.title}`}</h2></div><button className="close-button" onClick={onClose}>×</button></header>{step === "choose" && <div className="book-choice"><button onClick={() => setStep("start")}><span>＋</span><b>Start a book</b><small>Add it to your currently reading list</small></button><button onClick={() => setStep("finish")}><span>✓</span><b>Finish a book</b><small>Choose an active book or add past reading</small></button></div>}{step === "start" && <><label className="builder-name">Book title<input value={title} onChange={(event) => setTitle(event.target.value)} autoFocus /></label><div className="field-pair"><label>Author<input value={author} onChange={(event) => setAuthor(event.target.value)} /></label><label>Started<input type="date" value={startedOn} onChange={(event) => setStartedOn(event.target.value)} /></label></div><button className="primary-button" disabled={!title.trim()} onClick={() => { onSave({ id: Date.now(), title: title.trim(), author: author.trim() || undefined, startedOn: startedOn || undefined }); onClose(); }}><span>Save as currently reading</span><span>→</span></button></>}{step === "finish" && <><p className="modal-intro">Choose any book you have started. More than one book can stay in progress at once.</p><div className="active-book-options">{activeBooks.map((book) => <button className={selected === book.id ? "active" : ""} onClick={() => chooseBook(book.id)} key={book.id}><b>{book.title}</b><small>{book.author || "Author not added"}</small></button>)}<button className={selected === "manual" ? "active" : ""} onClick={() => chooseBook("manual")}><b>A book not listed</b><small>Add something read before using Yi</small></button></div>{selected !== null && <><label className="builder-name">Book title<input value={title} onChange={(event) => setTitle(event.target.value)} /></label><div className="field-pair"><label>Author<input value={author} onChange={(event) => setAuthor(event.target.value)} /></label><label>Started (optional)<input type="date" value={startedOn} onChange={(event) => setStartedOn(event.target.value)} /></label><label>Finished (optional)<input type="date" value={finishedOn} onChange={(event) => setFinishedOn(event.target.value)} /></label><label>Year read (if date is unknown)<input type="number" min="1000" max="2100" value={yearRead} onChange={(event) => setYearRead(event.target.value ? Number(event.target.value) : "")} /></label></div><button className="primary-button" disabled={!title.trim()} onClick={finishBook}><span>Finish book</span><span>✓</span></button></>}</>}{step === "congrats" && draft && <><p className="book-congrats">You finished <b>{draft.title}</b>. Capture any qualities or obstacles the book brought into view.</p><AssessmentEditor assessments={assessments} setAssessments={setAssessments} active={assessmentActive} setActive={setAssessmentActive} /><button className="primary-button" onClick={() => { const savedAssessments = loggedAssessments(assessments); onSave({ ...draft, assessments: Object.keys(savedAssessments).length ? savedAssessments : undefined }); onClose(); }}><span>Save finished book</span><span>→</span></button></>}</section></div>;
+  return <div className="modal-backdrop" onPointerDown={(event) => dismissBackdrop(event, onClose)}><section className="builder-modal book-log-modal"><header className="modal-header"><div><p className="eyebrow">Reading journal</p><h2>{step === "choose" ? "Log a book" : step === "start" ? "Start a book" : step === "finish" ? "Finish a book" : `Congratulations on finishing ${draft?.title}`}</h2></div><button className="close-button" onClick={onClose}>×</button></header>{step === "choose" && <div className="book-choice"><button onClick={() => setStep("start")}><span>＋</span><b>Start a book</b><small>Add it to your currently reading list</small></button><button onClick={() => setStep("finish")}><span>✓</span><b>Finish a book</b><small>Choose an active book or add past reading</small></button></div>}{step === "start" && <><label className="builder-name">Book title<input value={title} onChange={(event) => setTitle(event.target.value)} autoFocus /></label><div className="field-pair"><label>Author<input value={author} onChange={(event) => setAuthor(event.target.value)} /></label><label>Started<input type="date" value={startedOn} onChange={(event) => setStartedOn(event.target.value)} /></label></div><button className="primary-button" disabled={!title.trim()} onClick={() => { onSave({ id: createRecordId(), title: title.trim(), author: author.trim() || undefined, startedOn: startedOn || undefined }); onClose(); }}><span>Save as currently reading</span><span>→</span></button></>}{step === "finish" && <><p className="modal-intro">Choose any book you have started. More than one book can stay in progress at once.</p><div className="active-book-options">{activeBooks.map((book) => <button className={selected === book.id ? "active" : ""} onClick={() => chooseBook(book.id)} key={book.id}><b>{book.title}</b><small>{book.author || "Author not added"}</small></button>)}<button className={selected === "manual" ? "active" : ""} onClick={() => chooseBook("manual")}><b>A book not listed</b><small>Add something read before using Yi</small></button></div>{selected !== null && <><label className="builder-name">Book title<input value={title} onChange={(event) => setTitle(event.target.value)} /></label><div className="field-pair"><label>Author<input value={author} onChange={(event) => setAuthor(event.target.value)} /></label><label>Started (optional)<input type="date" value={startedOn} onChange={(event) => setStartedOn(event.target.value)} /></label><label>Finished (optional)<input type="date" value={finishedOn} onChange={(event) => setFinishedOn(event.target.value)} /></label><label>Year read (if date is unknown)<input type="number" min="1000" max="2100" value={yearRead} onChange={(event) => setYearRead(event.target.value ? Number(event.target.value) : "")} /></label></div><button className="primary-button" disabled={!title.trim()} onClick={finishBook}><span>Finish book</span><span>✓</span></button></>}</>}{step === "congrats" && draft && <><p className="book-congrats">You finished <b>{draft.title}</b>. Capture any qualities or obstacles the book brought into view.</p><AssessmentEditor assessments={assessments} setAssessments={setAssessments} active={assessmentActive} setActive={setAssessmentActive} /><button className="primary-button" onClick={() => { const savedAssessments = loggedAssessments(assessments); onSave({ ...draft, assessments: Object.keys(savedAssessments).length ? savedAssessments : undefined }); onClose(); }}><span>Save finished book</span><span>→</span></button></>}</section></div>;
 }
 
 function AddDashboardWidgetModal({ current, renderPreview, onAdd, onClose }: { current: DashboardWidgetId[]; renderPreview: (id: DashboardWidgetId) => React.ReactNode; onAdd: (id: DashboardWidgetId) => void; onClose: () => void }) {
@@ -351,8 +438,7 @@ function TodayScreen({ setActive, entries, cycleLog, onCycleLog, openReflection,
       let order = shuffledQuoteOrder();
       let position = dailyQuotePosition(currentDay);
       try {
-        const raw = localStorage.getItem(quoteRotationKey);
-        const saved = raw ? JSON.parse(raw) as StoredQuoteRotation : null;
+        const saved = localRepository.loadQuote();
         if (saved?.signature === quoteListSignature && validQuoteOrder(saved.order)) {
           order = saved.order;
           if (saved.day === currentDay && Number.isInteger(saved.position) && saved.position >= 0 && saved.position < dailyQuotes.length) position = saved.position;
@@ -364,7 +450,7 @@ function TodayScreen({ setActive, entries, cycleLog, onCycleLog, openReflection,
   }, []);
   useEffect(() => {
     if (!quoteReady) return;
-    try { localStorage.setItem(quoteRotationKey, JSON.stringify({ signature: quoteListSignature, order: quoteOrder, day: quoteDay, position: quotePosition } satisfies StoredQuoteRotation)); } catch { /* quote rotation can remain in memory */ }
+    try { localRepository.saveQuote({ signature: quoteListSignature, order: quoteOrder, day: quoteDay, position: quotePosition } satisfies StoredQuoteRotation); } catch { /* quote rotation can remain in memory */ }
   }, [quoteReady, quoteOrder, quoteDay, quotePosition]);
   useEffect(() => {
     if (!quoteReady) return;
@@ -384,7 +470,7 @@ function TodayScreen({ setActive, entries, cycleLog, onCycleLog, openReflection,
     if (id.startsWith("insight-")) return <InsightWidgetCard id={id.replace("insight-", "") as InsightWidgetId} entries={entries} cycleLog={cycleLog} onExpand={setExpanded} />;
     if (id === "cycle") return <CycleCard cycleLog={cycleLog} onLog={onCycleLog} />;
     if (id === "practice-start") return <article className="practice-card card"><div><p className="eyebrow">Practice room</p><h2>Make a little space</h2><p>Choose a recommended rhythm or create a timer that is entirely your own.</p></div><button className="primary-button" onClick={() => setActive("Practice")}><span>Begin practice</span><span>→</span></button></article>;
-    if (id === "daily-reflection") return <article className="daily-reflection-card card"><p className="eyebrow">Daily reflection</p><h2>What is worth remembering?</h2><textarea value={reflection} onChange={(event) => setReflection(event.target.value)} placeholder="Write a few honest lines…" /><button className="primary-button" disabled={!reflection.trim()} onClick={() => { addEntry({ id: Date.now(), type: "Journal", title: "Daily reflection", date: "Today · just now", note: reflection.trim() }); setReflection(""); }}><span>Save reflection</span><span>＋</span></button></article>;
+    if (id === "daily-reflection") return <article className="daily-reflection-card card"><p className="eyebrow">Daily reflection</p><h2>What is worth remembering?</h2><textarea value={reflection} onChange={(event) => setReflection(event.target.value)} placeholder="Write a few honest lines…" /><button className="primary-button" disabled={!reflection.trim()} onClick={() => { addEntry({ id: createRecordId(), type: "Journal", title: "Daily reflection", date: "Today · just now", note: reflection.trim() }); setReflection(""); }}><span>Save reflection</span><span>＋</span></button></article>;
     if (id === "log-activity") return <button className="shortcut-card dashboard-shortcut blue" onClick={() => openReflection({ duration: 0 })}><span>◌</span><b>Log activity</b><small>Meditation, yoga or your own</small></button>;
     if (id === "log-book") return <button className="shortcut-card dashboard-shortcut book" onClick={() => setBookLogOpen(true)}><span>▥</span><b>Log new book</b><small>Start reading or mark a book finished</small></button>;
     if (id === "cycle-checkin") return <button className="shortcut-card dashboard-shortcut coral" onClick={onCycleLog}><span>●</span><b>Cycle check-in</b><small>Flow, symptoms and temperature</small></button>;
@@ -413,7 +499,7 @@ function presetGongMarks(preset: TimerPreset) {
 }
 
 function SaveTimerModal({ initial, onClose, onSave }: { initial?: TimerPreset; onClose: () => void; onSave: (preset: TimerPreset) => void }) {
-  const [generatedId] = useState(() => Date.now());
+  const [generatedId] = useState(createRecordId);
   const starting = initial ?? { id: generatedId, name: "New practice", seconds: 600, color: "sage" as const, startGong: gongNames[0], endGong: gongNames[0], gongs: [] };
   const [name, setName] = useState(starting.name); const [hours, setHours] = useState(Math.floor(starting.seconds / 3600)); const [minutes, setMinutes] = useState(Math.floor(starting.seconds % 3600 / 60)); const [seconds, setSeconds] = useState(starting.seconds % 60);
   const [startGong, setStartGong] = useState(normalizedGongName(starting.startGong)); const [endGong, setEndGong] = useState(normalizedGongName(starting.endGong)); const [intervalEnabled, setIntervalEnabled] = useState(Boolean(starting.interval)); const [intervalMins, setIntervalMins] = useState(Math.max(1, Math.round((starting.interval ?? 300) / 60)));
@@ -432,13 +518,12 @@ function SaveTimerModal({ initial, onClose, onSave }: { initial?: TimerPreset; o
 }
 
 function PracticeScreen({ timers, setTimers, openReflection, notify }: { timers: TimerPreset[]; setTimers: React.Dispatch<React.SetStateAction<TimerPreset[]>>; openReflection: (request: ReflectionRequest) => void; notify: (message: string) => void }) {
-  const now = useStableNow();
   const [mode, setMode] = useState<PracticeMode>("Timer"); const [duration, setDuration] = useState(600); const [remaining, setRemaining] = useState(600); const [running, setRunning] = useState(false); const [elapsed, setElapsed] = useState(0);
   const [gongMenu, setGongMenu] = useState<"opening" | "closing" | null>(null); const [openingGong, setOpeningGong] = useState(gongNames[0]); const [closingGong, setClosingGong] = useState(gongNames[0]); const [intervalEnabled, setIntervalEnabled] = useState(true); const [intervalMinutes, setIntervalMinutes] = useState(5); const [intervalGong, setIntervalGong] = useState(gongNames[2]); const [customGongs, setCustomGongs] = useState([3, 8]); const [customGongSounds, setCustomGongSounds] = useState([gongNames[2], gongNames[3]]);
-  const [editingGongs, setEditingGongs] = useState(false); const [builder, setBuilder] = useState<TimerPreset | "new" | null>(null); const [presetMenu, setPresetMenu] = useState<number | null>(null); const draftId = now; const [customDurationOpen, setCustomDurationOpen] = useState(false); const [customHours, setCustomHours] = useState(0); const [customMinutes, setCustomMinutes] = useState(15); const [customSeconds, setCustomSeconds] = useState(0); const lastGong = useRef(-1); const deadline = useRef<number | null>(null); const stopwatchStartedAt = useRef<number | null>(null); const restored = useRef(false);
+  const [editingGongs, setEditingGongs] = useState(false); const [builder, setBuilder] = useState<TimerPreset | "new" | null>(null); const [presetMenu, setPresetMenu] = useState<RecordId | null>(null); const [draftId] = useState(createRecordId); const [customDurationOpen, setCustomDurationOpen] = useState(false); const [customHours, setCustomHours] = useState(0); const [customMinutes, setCustomMinutes] = useState(15); const [customSeconds, setCustomSeconds] = useState(0); const lastGong = useRef(-1); const deadline = useRef<number | null>(null); const stopwatchStartedAt = useRef<number | null>(null); const restored = useRef(false);
   const previousMode = useRef<"Timer" | "Stopwatch">("Timer");
-  const clearStoredPractice = () => { try { localStorage.removeItem(activePracticeKey); } catch { /* local storage can be unavailable */ } };
-  const storePractice = useCallback((record: StoredPractice) => { try { localStorage.setItem(activePracticeKey, JSON.stringify(record)); } catch { /* local storage can be unavailable */ } }, []);
+  const clearStoredPractice = () => { try { localRepository.savePractice(null); } catch { /* local storage can be unavailable */ } };
+  const storePractice = useCallback((record: StoredPractice) => { try { localRepository.savePractice(record); } catch { /* local storage can be unavailable */ } }, []);
   const completeTimer = useCallback(() => {
     setRunning(false); setRemaining(0); deadline.current = null; clearStoredPractice(); tone(closingGong);
     if (typeof Notification !== "undefined" && Notification.permission === "granted") new Notification("Practice complete", { body: "Your meditation timer has finished." });
@@ -447,7 +532,7 @@ function PracticeScreen({ timers, setTimers, openReflection, notify }: { timers:
   useEffect(() => {
     if (restored.current) return; restored.current = true;
     try {
-      const raw = localStorage.getItem(activePracticeKey); if (!raw) return; const saved = JSON.parse(raw) as StoredPractice;
+      const saved = localRepository.loadPractice(); if (!saved) return;
       const restoreTimer = window.setTimeout(() => {
         setMode(saved.mode); setDuration(saved.duration); setOpeningGong(normalizedGongName(saved.openingGong)); setClosingGong(normalizedGongName(saved.closingGong)); setIntervalEnabled(saved.intervalEnabled); setIntervalMinutes(saved.intervalMinutes); setIntervalGong(normalizedGongName(saved.intervalGong ?? gongNames[2])); setCustomGongs(saved.customGongs); setCustomGongSounds((saved.customGongSounds ?? saved.customGongs.map(() => gongNames[2])).map(normalizedGongName));
         if (saved.mode === "Timer" && saved.endAt) { const next = Math.max(0, Math.ceil((saved.endAt - Date.now()) / 1000)); setRemaining(next); if (next > 0) { deadline.current = saved.endAt; lastGong.current = saved.duration - next; setRunning(true); } else { clearStoredPractice(); notify("Your timer finished while you were away"); openReflection({ duration: Math.max(1, Math.round(saved.duration / 60)), type: "Meditation" }); } }
@@ -509,8 +594,8 @@ function suggestedEntryTitle(type: string, date = new Date()) { const hour = dat
 function ReflectionModal({ request, activities, setActivities, onClose, onSave }: { request: ReflectionRequest; activities: ActivityPreset[]; setActivities: React.Dispatch<React.SetStateAction<ActivityPreset[]>>; onClose: () => void; onSave: (entry: JournalEntry) => void }) {
   const [type, setType] = useState(request.type ?? activities[0]?.name ?? "Meditation"); const [duration, setDuration] = useState(request.duration); const [note, setNote] = useState(""); const [addingType, setAddingType] = useState(false); const [newType, setNewType] = useState("");
   const [assessments, setAssessments] = useState<Record<string, AssessmentValue>>(() => makeAssessments()); const [assessmentActive, setAssessmentActive] = useState(false);
-  const addType = () => { if (!newType.trim()) return; const preset: ActivityPreset = { id: Date.now(), name: newType.trim(), icon: "◇", color: "plum" }; setActivities((current) => [...current, preset]); setType(preset.name); setNewType(""); setAddingType(false); };
-  const save = (savedNote = note) => { const savedAssessments = loggedAssessments(assessments); onSave({ id: Date.now(), type, title: suggestedEntryTitle(type), date: "Today · just now", duration, note: savedNote, assessments: Object.keys(savedAssessments).length ? savedAssessments : undefined, tags: ["practice"] }); };
+  const addType = () => { if (!newType.trim()) return; const preset: ActivityPreset = { id: createRecordId(), name: newType.trim(), icon: "◇", color: "plum" }; setActivities((current) => [...current, preset]); setType(preset.name); setNewType(""); setAddingType(false); };
+  const save = (savedNote = note) => { const savedAssessments = loggedAssessments(assessments); onSave({ id: createRecordId(), type, title: suggestedEntryTitle(type), date: "Today · just now", duration, note: savedNote, assessments: Object.keys(savedAssessments).length ? savedAssessments : undefined, tags: ["practice"] }); };
   return <div className="modal-backdrop" onPointerDown={(event) => dismissBackdrop(event, onClose)}><section className="reflection-modal" role="dialog" aria-modal="true"><header className="modal-header"><div><p className="eyebrow">Practice complete</p><h2>How was that?</h2></div><button className="close-button" onClick={onClose}>×</button></header>
     <div className="reflection-basics"><label>Minutes<input type="number" min="0" value={duration} onChange={(event) => setDuration(Number(event.target.value))} /></label></div>
     <div className="activity-picker">{activities.map((item) => <button key={item.id} className={type === item.name ? "active" : ""} onClick={() => setType(item.name)}><span>{item.icon}</span>{item.name}</button>)}<button onClick={() => setAddingType(true)}><span>＋</span>Add</button></div>{addingType && <div className="add-preset-row"><input value={newType} onChange={(event) => setNewType(event.target.value)} placeholder="Activity name" onKeyDown={(event) => { if (event.key === "Enter") addType(); }} /><button onClick={addType}>Add preset</button></div>}
@@ -522,7 +607,7 @@ function ReflectionModal({ request, activities, setActivities, onClose, onSave }
 function NewEntryModal({ activities, initial, seedPrompt, seedType, seedTitle, seedNote, onClose, onSave }: { activities: ActivityPreset[]; initial?: JournalEntry; seedPrompt?: string; seedType?: string; seedTitle?: string; seedNote?: string; onClose: () => void; onSave: (entry: JournalEntry) => void }) {
   const [type, setType] = useState(initial?.type ?? seedType ?? "Journal"); const [title, setTitle] = useState(initial?.title ?? seedTitle ?? (seedPrompt ? "Prompted reflection" : "")); const [note, setNote] = useState(initial?.note ?? seedNote ?? (seedPrompt ? `${seedPrompt}\n\n` : "")); const [duration, setDuration] = useState(initial?.duration ?? 0); const [assessments, setAssessments] = useState<Record<string, AssessmentValue>>(() => makeAssessments(initial?.assessments)); const [assessmentActive, setAssessmentActive] = useState(Boolean(initial?.assessments));
   const suggestedTitle = suggestedEntryTitle(type);
-  return <div className="modal-backdrop" onPointerDown={(event) => dismissBackdrop(event, onClose)}><section className="builder-modal small-modal journal-entry-modal" role="dialog" aria-modal="true"><header className="modal-header"><div><p className="eyebrow">{initial ? "Edit journal entry" : "New journal entry"}</p><h2>{initial ? "Shape what you captured" : "Capture this moment"}</h2></div><button className="close-button" aria-label="Close" onClick={onClose}>×</button></header><div className="field-pair"><label>Type<select value={type} onChange={(event) => setType(event.target.value)}><option>Journal</option><option>Gratitude</option>{activities.map((activity) => <option key={activity.id}>{activity.name}</option>)}</select></label><label>Minutes<input type="number" min="0" value={duration} onChange={(event) => setDuration(Number(event.target.value))} /></label></div><label className="builder-name">Title<input value={title} onChange={(event) => setTitle(event.target.value)} placeholder={suggestedTitle} /><small>Leave blank to use “{suggestedTitle}”.</small></label><AssessmentEditor assessments={assessments} setAssessments={setAssessments} active={assessmentActive} setActive={setAssessmentActive} /><label className="notes-field"><span>Reflection</span><textarea value={note} onChange={(event) => setNote(event.target.value)} placeholder="What would you like to remember?" /></label><button className="primary-button" onClick={() => { const savedAssessments = loggedAssessments(assessments); onSave({ ...initial, id: initial?.id ?? Date.now(), type, title: title.trim() || suggestedTitle, date: initial?.date ?? "Today · just now", duration: duration || undefined, note, assessments: Object.keys(savedAssessments).length ? savedAssessments : undefined }); onClose(); }}><span>{initial ? "Save changes" : "Save entry"}</span><span>→</span></button></section></div>;
+  return <div className="modal-backdrop" onPointerDown={(event) => dismissBackdrop(event, onClose)}><section className="builder-modal small-modal journal-entry-modal" role="dialog" aria-modal="true"><header className="modal-header"><div><p className="eyebrow">{initial ? "Edit journal entry" : "New journal entry"}</p><h2>{initial ? "Shape what you captured" : "Capture this moment"}</h2></div><button className="close-button" aria-label="Close" onClick={onClose}>×</button></header><div className="field-pair"><label>Type<select value={type} onChange={(event) => setType(event.target.value)}><option>Journal</option><option>Gratitude</option>{activities.map((activity) => <option key={activity.id}>{activity.name}</option>)}</select></label><label>Minutes<input type="number" min="0" value={duration} onChange={(event) => setDuration(Number(event.target.value))} /></label></div><label className="builder-name">Title<input value={title} onChange={(event) => setTitle(event.target.value)} placeholder={suggestedTitle} /><small>Leave blank to use “{suggestedTitle}”.</small></label><AssessmentEditor assessments={assessments} setAssessments={setAssessments} active={assessmentActive} setActive={setAssessmentActive} /><label className="notes-field"><span>Reflection</span><textarea value={note} onChange={(event) => setNote(event.target.value)} placeholder="What would you like to remember?" /></label><button className="primary-button" onClick={() => { const savedAssessments = loggedAssessments(assessments); onSave({ ...initial, id: initial?.id ?? createRecordId(), type, title: title.trim() || suggestedTitle, date: initial?.date ?? "Today · just now", duration: duration || undefined, note, assessments: Object.keys(savedAssessments).length ? savedAssessments : undefined }); onClose(); }}><span>{initial ? "Save changes" : "Save entry"}</span><span>→</span></button></section></div>;
 }
 
 function calendarDotClass(entry: JournalEntry) { if (entry.type === "Meditation") return "meditation"; if (entry.type === "Maintenance Yoga") return "maintenance-yoga"; if (entry.type === "Work Out Yoga") return "workout-yoga"; if (entry.type === "Journal" || entry.type === "Gratitude") return "journal"; return "other"; }
@@ -545,15 +630,15 @@ function JournalEntryChooser({ onChoose, onClose }: { onChoose: (kind: "reflecti
   return <div className="modal-backdrop" onPointerDown={(event) => dismissBackdrop(event, onClose)}><section className="builder-modal small-modal entry-chooser"><header className="modal-header"><div><p className="eyebrow">New entry</p><h2>What would you like to capture?</h2></div><button className="close-button" onClick={onClose}>×</button></header><div className="entry-kind-grid"><button onClick={() => onChoose("reflection")}><span>✎</span><b>Journal entry</b><small>Write freely and add practice factors</small></button><button onClick={() => onChoose("gratitude")}><span>✦</span><b>Daily gratitude</b><small>Hold onto something quietly good</small></button></div><article className="prompt-card prompt-option"><div className="prompt-card-header"><span>Journal prompt</span><span>{promptIndex + 1} / {journalPrompts.length}</span></div><p>{journalPrompts[promptIndex]}</p><div className="prompt-actions"><div><button aria-label="Previous prompt" onClick={() => setPromptIndex((promptIndex - 1 + journalPrompts.length) % journalPrompts.length)}>←</button><button aria-label="Next prompt" onClick={() => setPromptIndex((promptIndex + 1) % journalPrompts.length)}>→</button></div><button onClick={() => onChoose("prompt", journalPrompts[promptIndex])}>Start writing</button></div></article></section></div>;
 }
 
-function JournalListEntry({ entry, entries, cycleLog, expanded, setExpanded, onEdit, onDelete }: { entry: JournalEntry; entries: JournalEntry[]; cycleLog: CycleLog; expanded: number | null; setExpanded: (id: number | null) => void; onEdit: (entry: JournalEntry) => void; onDelete: (entry: JournalEntry) => void }) {
+function JournalListEntry({ entry, entries, cycleLog, expanded, setExpanded, onEdit, onDelete }: { entry: JournalEntry; entries: JournalEntry[]; cycleLog: CycleLog; expanded: RecordId | null; setExpanded: (id: RecordId | null) => void; onEdit: (entry: JournalEntry) => void; onDelete: (entry: JournalEntry) => void }) {
   const now = useStableNow(); return <article className={`journal-entry card ${expanded === entry.id ? "expanded" : ""}`}><button className="journal-summary" onClick={() => setExpanded(expanded === entry.id ? null : entry.id)}><span className={`entry-symbol ${slug(entry.type)}`}>{entry.type === "Meditation" ? "◌" : entry.type === "Maintenance Yoga" ? "⌁" : entry.type === "Work Out Yoga" ? "△" : entry.type === "Gratitude" ? "✦" : entry.type === "Period" ? "●" : "▤"}</span><span className="entry-copy"><small>{entry.date}</small><b>{entry.title}</b><em>{entry.duration ? `${entry.duration} min` : entry.note?.slice(0, 54)}</em><small className="entry-context">☾ {journalContexts(entry, cycleLog, now).lunar} · ● {journalContexts(entry, cycleLog, now).cycle}</small></span><span className={`pill ${slug(entry.type)}`}>{entry.type}</span><span className="chevron">⌄</span></button>{expanded === entry.id && <div className="entry-detail"><p>{entry.note || "Time spent practicing — no reflection added."}</p><EntryAssessmentDetail entry={entry} entries={entries} /><div className="entry-actions"><button className="text-button" onClick={() => onEdit(entry)}>Edit reflection</button><button className="text-button delete-entry" onClick={() => onDelete(entry)}>Delete</button></div></div>}</article>;
 }
 
-function JournalScreen({ entries, activities, cycleLog, addEntry, updateEntry, deleteEntry }: { entries: JournalEntry[]; activities: ActivityPreset[]; cycleLog: CycleLog; addEntry: (entry: JournalEntry) => void; updateEntry: (entry: JournalEntry) => void; deleteEntry: (id: number) => void }) {
-  const now = useStableNow(); const [filter, setFilter] = useState("All"); const [expanded, setExpanded] = useState<number | null>(entries[0]?.id ?? null); const [search, setSearch] = useState(""); const [searching, setSearching] = useState(false); const [sort, setSort] = useState<"Newest" | "Oldest">("Newest"); const [view, setView] = useState<"List" | "Month" | "Year">("List"); const [chooser, setChooser] = useState(false); const [newEntry, setNewEntry] = useState(false); const [entryKind, setEntryKind] = useState<"reflection" | "gratitude" | "prompt">("reflection"); const [editingEntry, setEditingEntry] = useState<JournalEntry | null>(null); const [deleteTarget, setDeleteTarget] = useState<JournalEntry | null>(null); const [promptDraft, setPromptDraft] = useState<string | undefined>();
+function JournalScreen({ entries, activities, cycleLog, addEntry, updateEntry, deleteEntry }: { entries: JournalEntry[]; activities: ActivityPreset[]; cycleLog: CycleLog; addEntry: (entry: JournalEntry) => void; updateEntry: (entry: JournalEntry) => void; deleteEntry: (id: RecordId) => void }) {
+  const now = useStableNow(); const [filter, setFilter] = useState("All"); const [expanded, setExpanded] = useState<RecordId | null>(entries[0]?.id ?? null); const [search, setSearch] = useState(""); const [searching, setSearching] = useState(false); const [sort, setSort] = useState<"Newest" | "Oldest">("Newest"); const [view, setView] = useState<"List" | "Month" | "Year">("List"); const [chooser, setChooser] = useState(false); const [newEntry, setNewEntry] = useState(false); const [entryKind, setEntryKind] = useState<"reflection" | "gratitude" | "prompt">("reflection"); const [editingEntry, setEditingEntry] = useState<JournalEntry | null>(null); const [deleteTarget, setDeleteTarget] = useState<JournalEntry | null>(null); const [promptDraft, setPromptDraft] = useState<string | undefined>();
   useEffect(() => { const compose = (event: Event) => { const kind = (event as CustomEvent<string>).detail; if (kind === "prompt") setChooser(true); else { setEntryKind("reflection"); setPromptDraft(undefined); setNewEntry(true); } }; window.addEventListener("yi-journal-compose", compose); return () => window.removeEventListener("yi-journal-compose", compose); }, []);
   const filters = ["All", "Meditation", "Maintenance Yoga", "Work Out Yoga", "Gratitude", "Period", ...activities.map((activity) => activity.name).filter((name) => !["Meditation", "Maintenance Yoga", "Work Out Yoga"].includes(name))];
-  const visible = entries.filter((entry) => (filter === "All" || entry.type === filter) && `${entry.title} ${entry.note ?? ""} ${entry.type}`.toLowerCase().includes(search.toLowerCase())).sort((a, b) => sort === "Newest" ? entryTimestamp(b, now) - entryTimestamp(a, now) || b.id - a.id : entryTimestamp(a, now) - entryTimestamp(b, now) || a.id - b.id);
+  const visible = entries.filter((entry) => (filter === "All" || entry.type === filter) && `${entry.title} ${entry.note ?? ""} ${entry.type}`.toLowerCase().includes(search.toLowerCase())).sort((a, b) => sort === "Newest" ? entryTimestamp(b, now) - entryTimestamp(a, now) || String(b.id).localeCompare(String(a.id)) : entryTimestamp(a, now) - entryTimestamp(b, now) || String(a.id).localeCompare(String(b.id)));
   const monthGroups = visible.reduce<{ label: string; entries: JournalEntry[] }[]>((groups, entry) => {
     const label = new Intl.DateTimeFormat("en", { month: "long", year: "numeric", timeZone: DISPLAY_TIME_ZONE }).format(new Date(entryTimestamp(entry, now)));
     const current = groups.at(-1);
@@ -567,7 +652,7 @@ function JournalScreen({ entries, activities, cycleLog, addEntry, updateEntry, d
 }
 
 function entryTimestamp(entry: JournalEntry, now: number) {
-  if (entry.loggedAt) return entry.loggedAt; if (entry.id >= 1e12) return entry.id; if (entry.date.startsWith("Today")) return now; const match = entry.date.match(/^(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+(\d{1,2})/); if (!match) return entry.id;
+  if (entry.loggedAt) return entry.loggedAt; if (typeof entry.id === "number" && entry.id >= 1e12) return entry.id; if (entry.date.startsWith("Today")) return now; const match = entry.date.match(/^(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+(\d{1,2})/); if (!match) return typeof entry.id === "number" ? entry.id : now;
   const referenceParts = Object.fromEntries(displayDateParts.formatToParts(now).map((part) => [part.type, part.value])); const referenceYear = Number(referenceParts.year); const month = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"].indexOf(match[1]); let parsed = Date.UTC(referenceYear, month, Number(match[2]), 12); if (parsed > now + MILLISECONDS_PER_DAY) parsed = Date.UTC(referenceYear - 1, month, Number(match[2]), 12); return parsed;
 }
 function journalContexts(entry: JournalEntry, cycleLog: CycleLog, now: number) { const at = new Date(entryTimestamp(entry, now)); const moon = lunarPhase(at); const cycle = cycleSummary(cycleLog, at); return { lunar: entry.lunarContext ?? `${moon.name} · ${moon.illumination}%`, cycle: entry.cycleContext ?? `${cycle.phase} · day ${cycle.day}` }; }
@@ -604,34 +689,41 @@ function AnalyticsModal({ widget, entries, cycleLog, onClose }: { widget: Insigh
   const now = useStableNow(); const [range, setRange] = useState("90d"); const title = widgetMeta[widget].title; const ranges = ["7d", "30d", "90d", "1yr", "All"]; const patternId = (["factors", "faculties", "characteristics", "hindrances"] as InsightWidgetId[]).includes(widget) ? widget as PatternWidgetId : null; const pattern = patternId ? patternWidgetData[patternId] : null; const history = pattern ? assessmentHistory(entries, pattern.items, range, now) : []; const latest = history.at(-1); const previous = history.at(-2); const activityType = insightActivityType(widget); const activityEntries = activityType ? activityHistory(entries, activityType, range, now) : []; const activityMinutes = activityEntries.reduce((sum, entry) => sum + (entry.duration ?? 0), 0); const activityAverage = activityEntries.length ? Math.round(activityMinutes / activityEntries.length) : 0; const activityLongest = Math.max(0, ...activityEntries.map((entry) => entry.duration ?? 0)); const cutoff = rangeCutoff(range, now); const practiceEntries = entries.filter((entry) => practiceActivityTypes.includes(entry.type as PracticeActivityType) && (!cutoff || entryTimestamp(entry, now) >= cutoff)); const practiceMinutes = practiceEntries.reduce((sum, entry) => sum + (entry.duration ?? 0), 0); const cycleHistory = (cycleLog.history ?? []).filter((item) => !cutoff || dateOnlyTimestamp(item.date) >= cutoff); const latestCycle = cycleHistory.at(-1); const cycleInsights = deriveCycleInsights(cycleHistory);
   const count = pattern ? history.length : activityType ? activityEntries.length : widget === "cycle" || widget === "body" ? cycleHistory.length : practiceEntries.length;
   return <div className="modal-backdrop" onPointerDown={(event) => dismissBackdrop(event, onClose)}><section className={`analytics-modal ${widget === "cycle" || widget === "body" ? "cycle-analytics" : ""}`}><header className="modal-header"><div><p className="eyebrow">Expanded analytics</p><h2>{title}</h2></div><button className="close-button" onClick={onClose}>×</button></header><div className="range-tabs" style={{ "--range-offset": `${ranges.indexOf(range) * 100}%` } as React.CSSProperties}>{ranges.map((item) => <button key={item} className={range === item ? "active" : ""} onClick={() => setRange(item)}>{item}</button>)}</div><div className="analytics-hero"><div><span>Entries in view</span><strong>{count}</strong><small>{range} window</small></div>{pattern ? <AssessmentPatternChart entries={entries} items={pattern.items} range={range} /> : activityType ? <ActivityHistoryChart entries={entries} type={activityType} range={range} /> : widget === "cycle" || widget === "body" ? <CycleTrackingChart history={cycleHistory} /> : <PracticeRhythmChart entries={entries} range={range} />}</div>
-    {pattern ? <div className="factor-table">{pattern.items.map((factor, index) => { const value = latest?.assessments?.[factor]?.value; const previousValue = previous?.assessments?.[factor]?.value; const delta = typeof value === "number" && typeof previousValue === "number" ? value - previousValue : null; return <div key={factor}><i style={{ background: patternColors[index % patternColors.length] }} /><span>{assessmentLabel(factor)}</span><b>{typeof value === "number" ? `${value}%` : "—"}</b><em>{delta === null ? "—" : `${delta > 0 ? "+" : delta < 0 ? "−" : ""}${Math.abs(delta)}`}</em></div>; })}</div> : activityType ? <><div className="analytics-callouts"><article><span>Total practice</span><strong>{activityMinutes} min</strong></article><article><span>Average session</span><strong>{activityAverage} min</strong></article><article><span>Longest session</span><strong>{activityLongest} min</strong></article></div><div className="activity-history-list">{activityEntries.slice(-5).reverse().map((entry) => <div key={entry.id}><span><b>{entry.title}</b><small>{entry.date}</small></span><strong>{entry.duration ?? 0} min</strong></div>)}{activityEntries.length === 0 && <p>No {activityType.toLowerCase()} sessions were logged in this range.</p>}</div></> : widget === "cycle" || widget === "body" ? <><div className="analytics-callouts"><article><span>Latest temperature</span><strong>{latestCycle?.temperature ? `${latestCycle.temperature.toFixed(2)}°C` : "—"}</strong></article><article><span>Cervical mucus</span><strong>{latestCycle?.cervicalMucus ?? "—"}</strong></article><article><span>Sleep score</span><strong>{latestCycle?.sleepScore ?? "—"}</strong></article></div><div className="cycle-insight-list"><p><b>Temperature pattern</b>{cycleInsights.coverline ? `${cycleInsights.sustainedShift ? "A sustained rise is visible" : "No sustained rise yet"} · working coverline ${cycleInsights.coverline.toFixed(2)}°C` : "More valid temperature entries are needed for a shift pattern."}</p><p><b>Peak-type mucus</b>{cycleInsights.peakMucus ? `${cycleInsights.peakMucus.cervicalMucus} observed ${cycleInsights.peakMucus.date}` : "No watery or egg-white mucus logged in this range."}</p><p><b>Latest observations</b>{latestCycle ? `${latestCycle.flow} flow · ${latestCycle.ovulationTest} ovulation test · ${latestCycle.symptoms.length ? latestCycle.symptoms.join(", ") : "no symptoms"}` : "No observations in this range."}</p><p><b>Body signals</b>{latestCycle ? `Energy ${latestCycle.energy}% · sex drive ${latestCycle.sexDrive}% · PMS ${latestCycle.pms}%` : "Log a cycle check-in to begin."}</p><p><b>Sleep pattern</b>{cycleInsights.averageSleep ? `${Math.floor(cycleInsights.averageSleep / 60)}h ${cycleInsights.averageSleep % 60}m average · latest score ${latestCycle?.sleepScore ?? "—"}` : "No sleep data logged."}</p><p><b>Common symptoms</b>{cycleInsights.commonSymptoms.length ? cycleInsights.commonSymptoms.join(" · ") : "No repeated symptoms in this range."}</p></div></> : <><div className="analytics-callouts"><article><span>Total practice</span><strong>{practiceMinutes} min</strong></article><article><span>Sessions</span><strong>{practiceEntries.length}</strong></article><article><span>Average session</span><strong>{practiceEntries.length ? Math.round(practiceMinutes / practiceEntries.length) : 0} min</strong></article></div></>}
-    <p className="source-caption"><span>↻</span> {pattern ? "Calculated from saved slider assessments" : activityType ? `Calculated from logged ${activityType.toLowerCase()} entries` : widget === "cycle" || widget === "body" ? "Calculated from your saved body and cycle observations" : "Calculated from logged meditation and yoga entries"}</p>{(widget === "cycle" || widget === "body") && <p className="cycle-safety">Cycle predictions and temperature shifts are awareness tools, not contraception or medical advice.</p>}</section></div>;
+    {pattern ? <div className="factor-table">{pattern.items.map((factor, index) => { const value = latest?.assessments?.[factor]?.value; const previousValue = previous?.assessments?.[factor]?.value; const delta = typeof value === "number" && typeof previousValue === "number" ? value - previousValue : null; return <div key={factor}><i style={{ background: patternColors[index % patternColors.length] }} /><span>{assessmentLabel(factor)}</span><b>{typeof value === "number" ? `${value}%` : "—"}</b><em>{delta === null ? "—" : `${delta > 0 ? "+" : delta < 0 ? "−" : ""}${Math.abs(delta)}`}</em></div>; })}</div> : activityType ? <><div className="analytics-callouts"><article><span>Total practice</span><strong>{activityMinutes} min</strong></article><article><span>Average session</span><strong>{activityAverage} min</strong></article><article><span>Longest session</span><strong>{activityLongest} min</strong></article></div><div className="activity-history-list">{activityEntries.slice(-5).reverse().map((entry) => <div key={entry.id}><span><b>{entry.title}</b><small>{entry.date}</small></span><strong>{entry.duration ?? 0} min</strong></div>)}{activityEntries.length === 0 && <p>No {activityType.toLowerCase()} sessions were logged in this range.</p>}</div></> : widget === "cycle" || widget === "body" ? <><div className="analytics-callouts"><article><span>Latest temperature</span><strong>{latestCycle?.temperature ? `${latestCycle.temperature.toFixed(2)}°C` : "—"}</strong></article><article><span>Cervical mucus</span><strong>{cycleFieldText(latestCycle, "cervicalMucus")}</strong></article><article><span>Sleep score</span><strong>{latestCycle?.sleepScore ?? "—"}</strong></article></div><div className="cycle-insight-list"><p><b>Temperature pattern</b>{cycleInsights.coverline ? `${cycleInsights.sustainedShift ? "A sustained rise is visible" : "No sustained rise yet"} · working coverline ${cycleInsights.coverline.toFixed(2)}°C` : "More valid temperature entries are needed for a shift pattern."}</p><p><b>Peak-type mucus</b>{cycleInsights.peakMucus ? `${cycleInsights.peakMucus.cervicalMucus} observed ${cycleInsights.peakMucus.date}` : "No watery or egg-white mucus logged in this range."}</p><p><b>Latest observations</b>{latestCycle ? `${cycleFieldText(latestCycle, "flow")} flow · ${cycleFieldText(latestCycle, "ovulationTest")} ovulation test · ${cycleFieldText(latestCycle, "symptoms")} symptoms` : "No observations in this range."}</p><p><b>Body signals</b>{latestCycle ? `Energy ${cycleFieldText(latestCycle, "energy")} · sex drive ${cycleFieldText(latestCycle, "sexDrive")} · PMS ${cycleFieldText(latestCycle, "pms")}` : "Log a cycle check-in to begin."}</p><p><b>Sleep pattern</b>{cycleInsights.averageSleep ? `${Math.floor(cycleInsights.averageSleep / 60)}h ${cycleInsights.averageSleep % 60}m average · latest score ${latestCycle?.sleepScore ?? "—"}` : "No sleep data logged."}</p><p><b>Common symptoms</b>{cycleInsights.commonSymptoms.length ? cycleInsights.commonSymptoms.join(" · ") : "No repeated symptoms in this range."}</p></div></> : <><div className="analytics-callouts"><article><span>Total practice</span><strong>{practiceMinutes} min</strong></article><article><span>Sessions</span><strong>{practiceEntries.length}</strong></article><article><span>Average session</span><strong>{practiceEntries.length ? Math.round(practiceMinutes / practiceEntries.length) : 0} min</strong></article></div></>}
+    <p className="source-caption"><span>↻</span> {pattern ? "Calculated from saved slider assessments" : activityType ? `Calculated from logged ${activityType.toLowerCase()} entries` : widget === "cycle" || widget === "body" ? "App-derived estimates from saved body and cycle observations" : "Calculated from logged meditation and yoga entries"}</p>{(widget === "cycle" || widget === "body") && <p className="cycle-safety">Cycle predictions and temperature shifts are awareness tools, not contraception or medical advice.</p>}</section></div>;
 }
 
 function CycleLogModal({ cycleLog, onClose, onSave }: { cycleLog: CycleLog; onClose: () => void; onSave: (log: CycleLog) => void }) {
-  const [draft, setDraft] = useState<CycleDayLog>(() => { const today = new Date().toLocaleDateString("en-CA"); const previous = cycleLog.history?.find((item) => item.date === today); const blank: CycleDayLog = { id: Date.now(), date: today, flow: "None", cycleDayOne: false, temperatureSource: "Tempdrop", questionableTemperature: false, cervicalMucus: "None / dry", mucusSensation: "Dry", cervixPosition: "Medium", cervixFirmness: "Medium", cervixOpening: "Medium", ovulationTest: "Not tested", pregnancyTest: "Not tested", intercourse: false, symptoms: [], energy: 50, sexDrive: 50, pms: 0, disturbances: [] }; return previous ?? blank; }); const [averageCycle, setAverageCycle] = useState(cycleLog.averageCycle); const [averagePeriod, setAveragePeriod] = useState(cycleLog.averagePeriod); const symptomOptions = ["Headache", "Tender breasts", "Cramps", "Bloating", "Fatigue", "Mood shift", "Acne", "Backache", "Nausea", "Cravings"]; const disturbanceOptions = ["Alcohol", "Medication", "Illness", "Travel", "Poor sleep", "Late temperature"];
-  const update = <K extends keyof CycleDayLog>(key: K, value: CycleDayLog[K]) => setDraft((current) => ({ ...current, [key]: value })); const toggleList = (key: "symptoms" | "disturbances", item: string) => update(key, draft[key].includes(item) ? draft[key].filter((value) => value !== item) : [...draft[key], item]);
-  return <div className="modal-backdrop" onPointerDown={(event) => dismissBackdrop(event, onClose)}><section className="builder-modal cycle-log-modal"><header className="modal-header"><div><p className="eyebrow">Body & cycle check-in</p><h2>Log today’s signals</h2></div><button className="close-button" onClick={onClose}>×</button></header><p className="modal-intro">Track the same broad categories used by Tempdrop-style charting: temperature, mucus, cervix, tests, symptoms, feelings, disturbances and sleep. Estimates are not contraception or medical advice.</p>
-    <div className="cycle-form-section"><h3>Day & bleeding</h3><div className="field-pair"><label>Date<input type="date" value={draft.date} onChange={(event) => update("date", event.target.value)} /></label><label className="check-label"><input type="checkbox" checked={draft.cycleDayOne} onChange={(event) => update("cycleDayOne", event.target.checked)} />This is cycle day 1</label></div><div className="choice-chips wrap">{(["None", "Spotting", "Light", "Medium", "Heavy"] as const).map((item) => <button className={draft.flow === item ? "active" : ""} onClick={() => update("flow", item)} key={item}>{item}</button>)}</div><div className="field-pair"><label>Average cycle<input type="number" min="15" max="60" value={averageCycle} onChange={(event) => setAverageCycle(Number(event.target.value))} /></label><label>Average period<input type="number" min="1" max="14" value={averagePeriod} onChange={(event) => setAveragePeriod(Number(event.target.value))} /></label></div></div>
-    <div className="cycle-form-section"><h3>Temperature</h3><div className="field-pair"><label>Basal temperature °C<input type="number" min="34" max="42" step=".01" value={draft.temperature ?? ""} onChange={(event) => update("temperature", event.target.value ? Number(event.target.value) : undefined)} placeholder="36.45" /></label><label>Source<select value={draft.temperatureSource} onChange={(event) => update("temperatureSource", event.target.value as CycleDayLog["temperatureSource"])}><option>Tempdrop</option><option>Oral</option><option>Vaginal</option></select></label></div><label className="check-label"><input type="checkbox" checked={draft.questionableTemperature} onChange={(event) => update("questionableTemperature", event.target.checked)} />Mark this temperature as questionable</label></div>
-    <div className="cycle-form-section"><h3>Cervical mucus</h3><div className="field-pair"><label>Observation<select value={draft.cervicalMucus} onChange={(event) => update("cervicalMucus", event.target.value as CycleDayLog["cervicalMucus"])}>{["None / dry", "Sticky", "Creamy", "Watery", "Egg white"].map((item) => <option key={item}>{item}</option>)}</select></label><label>Sensation<select value={draft.mucusSensation} onChange={(event) => update("mucusSensation", event.target.value as CycleDayLog["mucusSensation"])}>{["Dry", "Damp", "Wet", "Slippery"].map((item) => <option key={item}>{item}</option>)}</select></label></div></div>
-    <div className="cycle-form-section"><h3>Cervix & tests</h3><div className="cycle-three-fields"><label>Position<select value={draft.cervixPosition} onChange={(event) => update("cervixPosition", event.target.value as CycleDayLog["cervixPosition"])}>{["Low", "Medium", "High"].map((item) => <option key={item}>{item}</option>)}</select></label><label>Firmness<select value={draft.cervixFirmness} onChange={(event) => update("cervixFirmness", event.target.value as CycleDayLog["cervixFirmness"])}>{["Firm", "Medium", "Soft"].map((item) => <option key={item}>{item}</option>)}</select></label><label>Opening<select value={draft.cervixOpening} onChange={(event) => update("cervixOpening", event.target.value as CycleDayLog["cervixOpening"])}>{["Closed", "Medium", "Open"].map((item) => <option key={item}>{item}</option>)}</select></label></div><div className="field-pair"><label>Ovulation test<select value={draft.ovulationTest} onChange={(event) => update("ovulationTest", event.target.value as CycleDayLog["ovulationTest"])}>{["Not tested", "Negative", "Positive", "Low", "High", "Peak"].map((item) => <option key={item}>{item}</option>)}</select></label><label>Pregnancy test<select value={draft.pregnancyTest} onChange={(event) => update("pregnancyTest", event.target.value as CycleDayLog["pregnancyTest"])}>{["Not tested", "Negative", "Positive"].map((item) => <option key={item}>{item}</option>)}</select></label></div><label className="check-label"><input type="checkbox" checked={draft.intercourse} onChange={(event) => update("intercourse", event.target.checked)} />Intercourse</label></div>
-    <div className="cycle-form-section"><h3>Body scan & symptoms</h3><div className="choice-chips wrap">{symptomOptions.map((item) => <button className={draft.symptoms.includes(item) ? "active" : ""} onClick={() => toggleList("symptoms", item)} key={item}>{item}</button>)}</div><div className="cycle-scales">{([['energy', 'Energy'], ['sexDrive', 'Sex drive'], ['pms', 'PMS']] as const).map(([key, label]) => <label key={key}><span>{label}<output>{draft[key]}%</output></span><input type="range" min="0" max="100" value={draft[key]} onChange={(event) => update(key, Number(event.target.value))} /></label>)}</div></div>
-    <div className="cycle-form-section"><h3>Disturbances & notes</h3><div className="choice-chips wrap">{disturbanceOptions.map((item) => <button className={draft.disturbances.includes(item) ? "active" : ""} onClick={() => toggleList("disturbances", item)} key={item}>{item}</button>)}</div><div className="field-pair"><label>Medication detail<input value={draft.medicationNote ?? ""} onChange={(event) => update("medicationNote", event.target.value)} placeholder="Name, dose or timing" /></label><label>Notes<input value={draft.notes ?? ""} onChange={(event) => update("notes", event.target.value)} placeholder="Anything else" /></label></div></div>
+  const [draft, setDraft] = useState<CycleDayLog>(() => { const today = localCalendarDate(Date.now()); const previous = cycleLog.history?.find((item) => item.date === today); return previous ?? createCycleDraft(today); }); const [averageCycle, setAverageCycle] = useState(cycleLog.averageCycle); const [averagePeriod, setAveragePeriod] = useState(cycleLog.averagePeriod); const symptomOptions = ["Headache", "Tender breasts", "Cramps", "Bloating", "Fatigue", "Mood shift", "Acne", "Backache", "Nausea", "Cravings"]; const disturbanceOptions = ["Alcohol", "Medication", "Illness", "Travel", "Poor sleep", "Late temperature"];
+  const update = <K extends keyof CycleDayLog>(key: K, value: CycleDayLog[K]) => setDraft((current) => updateCycleField(current, key, value)); const toggleList = (key: "symptoms" | "disturbances", item: string) => update(key, draft[key].includes(item) ? draft[key].filter((value) => value !== item) : [...draft[key], item]);
+  return <div className="modal-backdrop" onPointerDown={(event) => dismissBackdrop(event, onClose)}><section className="builder-modal cycle-log-modal"><header className="modal-header"><div><p className="eyebrow">Body & cycle check-in</p><h2>Log today’s signals</h2></div><button className="close-button" onClick={onClose}>×</button></header><p className="modal-intro">Manual check-in (including transcribed measurements): temperature, mucus, cervix, tests, symptoms, feelings, disturbances and sleep. Untouched fields are unrecorded. Cycle estimates are calculated by this app, not imported measurements.</p>
+    <div className="cycle-form-section"><h3>Day & bleeding</h3><div className="field-pair"><label>Date<input type="date" value={draft.date} onChange={(event) => update("date", event.target.value)} /></label><label className="check-label"><input type="checkbox" checked={draft.cycleDayOne} onChange={(event) => update("cycleDayOne", event.target.checked)} />This is cycle day 1</label></div><div className="choice-chips wrap">{(["None", "Spotting", "Light", "Medium", "Heavy"] as const).map((item) => <button className={(draft.recordedFields === undefined || draft.recordedFields.includes("flow")) && draft.flow === item ? "active" : ""} onClick={() => update("flow", item)} key={item}>{item}</button>)}</div><div className="field-pair"><label>Average cycle<input type="number" min="15" max="60" value={averageCycle} onChange={(event) => setAverageCycle(Number(event.target.value))} /></label><label>Average period<input type="number" min="1" max="14" value={averagePeriod} onChange={(event) => setAveragePeriod(Number(event.target.value))} /></label></div></div>
+    <div className="cycle-form-section"><h3>Temperature</h3><div className="field-pair"><label>Basal temperature °C<input type="number" min="34" max="42" step=".01" value={draft.temperature ?? ""} onChange={(event) => update("temperature", event.target.value ? Number(event.target.value) : undefined)} placeholder="36.45" /></label><label>Source<select value={draft.temperatureSource} onChange={(event) => update("temperatureSource", event.target.value as CycleDayLog["temperatureSource"])}><option>Manual</option><option>Tempdrop</option><option>Oral</option><option>Vaginal</option></select></label></div><label className="check-label"><input type="checkbox" checked={draft.questionableTemperature} onChange={(event) => update("questionableTemperature", event.target.checked)} />Mark this temperature as questionable</label></div>
+    <div className="cycle-form-section"><h3>Cervical mucus</h3><div className="field-pair"><label>Observation<select value={draft.recordedFields === undefined || draft.recordedFields.includes("cervicalMucus") ? draft.cervicalMucus : ""} onChange={(event) => update("cervicalMucus", event.target.value as CycleDayLog["cervicalMucus"])}><option value="" disabled>Not recorded</option>{["None / dry", "Sticky", "Creamy", "Watery", "Egg white"].map((item) => <option key={item}>{item}</option>)}</select></label><label>Sensation<select value={draft.recordedFields === undefined || draft.recordedFields.includes("mucusSensation") ? draft.mucusSensation : ""} onChange={(event) => update("mucusSensation", event.target.value as CycleDayLog["mucusSensation"])}><option value="" disabled>Not recorded</option>{["Dry", "Damp", "Wet", "Slippery"].map((item) => <option key={item}>{item}</option>)}</select></label></div></div>
+    <div className="cycle-form-section"><h3>Cervix & tests</h3><div className="cycle-three-fields"><label>Position<select value={draft.recordedFields === undefined || draft.recordedFields.includes("cervixPosition") ? draft.cervixPosition : ""} onChange={(event) => update("cervixPosition", event.target.value as CycleDayLog["cervixPosition"])}><option value="" disabled>Not recorded</option>{["Low", "Medium", "High"].map((item) => <option key={item}>{item}</option>)}</select></label><label>Firmness<select value={draft.recordedFields === undefined || draft.recordedFields.includes("cervixFirmness") ? draft.cervixFirmness : ""} onChange={(event) => update("cervixFirmness", event.target.value as CycleDayLog["cervixFirmness"])}><option value="" disabled>Not recorded</option>{["Firm", "Medium", "Soft"].map((item) => <option key={item}>{item}</option>)}</select></label><label>Opening<select value={draft.recordedFields === undefined || draft.recordedFields.includes("cervixOpening") ? draft.cervixOpening : ""} onChange={(event) => update("cervixOpening", event.target.value as CycleDayLog["cervixOpening"])}><option value="" disabled>Not recorded</option>{["Closed", "Medium", "Open"].map((item) => <option key={item}>{item}</option>)}</select></label></div><div className="field-pair"><label>Ovulation test<select value={draft.recordedFields === undefined || draft.recordedFields.includes("ovulationTest") ? draft.ovulationTest : ""} onChange={(event) => update("ovulationTest", event.target.value as CycleDayLog["ovulationTest"])}><option value="" disabled>Not recorded</option>{["Not tested", "Negative", "Positive", "Low", "High", "Peak"].map((item) => <option key={item}>{item}</option>)}</select></label><label>Pregnancy test<select value={draft.recordedFields === undefined || draft.recordedFields.includes("pregnancyTest") ? draft.pregnancyTest : ""} onChange={(event) => update("pregnancyTest", event.target.value as CycleDayLog["pregnancyTest"])}><option value="" disabled>Not recorded</option>{["Not tested", "Negative", "Positive"].map((item) => <option key={item}>{item}</option>)}</select></label></div><label className="check-label"><input type="checkbox" checked={draft.intercourse} onChange={(event) => update("intercourse", event.target.checked)} />Intercourse</label></div>
+    <div className="cycle-form-section"><h3>Body scan & symptoms</h3><div className="choice-chips wrap"><button className={draft.recordedFields?.includes("symptoms") && draft.symptoms.length === 0 ? "active" : ""} onClick={() => update("symptoms", [])}>None</button>{symptomOptions.map((item) => <button className={draft.symptoms.includes(item) ? "active" : ""} onClick={() => toggleList("symptoms", item)} key={item}>{item}</button>)}</div><div className="cycle-scales">{([['energy', 'Energy'], ['sexDrive', 'Sex drive'], ['pms', 'PMS']] as const).map(([key, label]) => <label key={key}><span>{label}<output>{draft.recordedFields === undefined || draft.recordedFields.includes(key) ? `${draft[key]}%` : "Not recorded"}</output></span><input type="range" min="0" max="100" value={draft[key]} onChange={(event) => update(key, Number(event.target.value))} /></label>)}</div></div>
+    <div className="cycle-form-section"><h3>Disturbances & notes</h3><div className="choice-chips wrap"><button className={draft.recordedFields?.includes("disturbances") && draft.disturbances.length === 0 ? "active" : ""} onClick={() => update("disturbances", [])}>None</button>{disturbanceOptions.map((item) => <button className={draft.disturbances.includes(item) ? "active" : ""} onClick={() => toggleList("disturbances", item)} key={item}>{item}</button>)}</div><div className="field-pair"><label>Medication detail<input value={draft.medicationNote ?? ""} onChange={(event) => update("medicationNote", event.target.value)} placeholder="Name, dose or timing" /></label><label>Notes<input value={draft.notes ?? ""} onChange={(event) => update("notes", event.target.value)} placeholder="Anything else" /></label></div></div>
     <div className="cycle-form-section"><h3>Sleep</h3><div className="sleep-fields">{([['sleepScore','Score'],['sleepMinutes','Total min'],['deepSleepMinutes','Deep min'],['sleepLatencyMinutes','Latency min'],['sleepInterruptions','Interruptions']] as const).map(([key, label]) => <label key={key}>{label}<input type="number" min="0" value={draft[key] ?? ""} onChange={(event) => update(key, event.target.value ? Number(event.target.value) : undefined)} /></label>)}</div></div>
-    <button className="primary-button" onClick={() => { const history = [...(cycleLog.history ?? []).filter((item) => item.date !== draft.date), draft].sort((a, b) => a.date.localeCompare(b.date)); onSave({ lastPeriod: draft.cycleDayOne ? draft.date : cycleLog.lastPeriod, averageCycle, averagePeriod, flow: draft.flow, symptoms: draft.symptoms, temperature: draft.temperature, history }); onClose(); }}><span>Save body & cycle check-in</span><span>→</span></button></section></div>;
+    <button className="primary-button" onClick={() => { onSave(saveCycleDraft(cycleLog, draft, averageCycle, averagePeriod)); onClose(); }}><span>Save body & cycle check-in</span><span>→</span></button></section></div>;
+}
+
+function YiExperience({ initialNow, repository }: { initialNow: number; repository?: DataRepository }) {
+  const stableNow = initialNow;
+  const [active, setActive] = useState<Screen>("Insights"); const [reflection, setReflection] = useState<ReflectionRequest | null>(null); const [cycleOpen, setCycleOpen] = useState(false); const [toast, setToast] = useState("");
+  const { journal: entries, timers, activities, books, cycle: cycleLog, widgets, ready, issues, reload, setEntries, setTimers, setActivities, setBooks, setCycleLog, setDashboardWidgets, setHealth } = useAppData(defaultDashboardWidgets, repository);
+  const dashboardWidgets = widgets.filter((id): id is DashboardWidgetId => id in dashboardWidgetMeta && !retiredDashboardWidgets.has(id as DashboardWidgetId));
+  useEffect(() => { if (!toast) return; const id = setTimeout(() => setToast(""), 2800); return () => clearTimeout(id); }, [toast]);
+  const notify = useCallback((message: string) => setToast(message), []); const addEntry = (entry: JournalEntry) => { const loggedAt = entry.loggedAt ?? (typeof entry.id === "number" && entry.id >= 1e12 ? entry.id : Date.now()); const at = new Date(loggedAt); const moon = lunarPhase(at); const cycle = cycleSummary(cycleLog, at); const contextualEntry = { ...entry, loggedAt, lunarContext: entry.lunarContext ?? `${moon.name} · ${moon.illumination}%`, cycleContext: entry.cycleContext ?? `${cycle.phase} · day ${cycle.day}` }; setEntries((current) => [contextualEntry, ...current]); notify("Saved to your journal"); };
+  const updateEntry = (entry: JournalEntry) => { setEntries((current) => current.map((item) => item.id === entry.id ? entry : item)); notify("Journal entry updated"); };
+  const deleteEntry = (id: RecordId) => { setEntries((current) => current.filter((item) => item.id !== id)); notify("Journal entry deleted"); };
+  const saveCycle = (log: CycleLog) => { const latest = log.history.at(-1); const cycle = cycleSummary(log, new Date()); setCycleLog(log); const modified = log.history.find(item => item.recordOrigin === "user" && item.recordedFields !== undefined && JSON.stringify(item) !== JSON.stringify(cycleLog.history.find(previous => previous.id === item.id)));
+    if (modified) setHealth(current => reconcileManualHealthRecords(modified, current, new Date().toISOString()));
+    addEntry({ id: createRecordId(), type: "Period", title: "Body & cycle check-in", date: "Today · just now", cycleContext: `${cycle.phase} · day ${cycle.day}`, note: `${cycleFieldText(modified ?? latest, "flow")} flow${log.symptoms.length ? ` · ${log.symptoms.join(", ")}` : ""}${log.temperature ? ` · ${log.temperature.toFixed(2)}°C` : ""}${latest ? ` · ${cycleFieldText(latest, "cervicalMucus")} mucus` : ""}` }); };
+  return <StableNowContext.Provider value={stableNow}><main className="app-shell" inert={!ready}><Navigation active={active} setActive={setActive} cloud={Boolean(repository)} /><div hidden={active !== "Insights"}><TodayScreen setActive={setActive} entries={entries} cycleLog={cycleLog} onCycleLog={() => setCycleOpen(true)} openReflection={setReflection} widgets={dashboardWidgets} setWidgets={(next) => setDashboardWidgets(current => typeof next === "function" ? next(current.filter((id): id is DashboardWidgetId => id in dashboardWidgetMeta)) : next)} addEntry={addEntry} books={books} setBooks={setBooks} /></div><div hidden={active !== "Practice"}><PracticeScreen timers={timers} setTimers={setTimers} openReflection={setReflection} notify={notify} /></div><div hidden={active !== "Journal"}><JournalScreen entries={entries} activities={activities} cycleLog={cycleLog} addEntry={addEntry} updateEntry={updateEntry} deleteEntry={deleteEntry} /></div>{reflection && <ReflectionModal request={reflection} activities={activities} setActivities={setActivities} onClose={() => setReflection(null)} onSave={addEntry} />}{cycleOpen && <CycleLogModal cycleLog={cycleLog} onClose={() => setCycleOpen(false)} onSave={saveCycle} />}{repository ? <section className="page" aria-label="Cloud data safety">{!ready && <p role="status">Loading private cloud data. Editing remains disabled until loading succeeds.</p>}{issues.map(issue => <p role="alert" key={issue.dataset}>{issue.message}</p>)}</section> : <DataTools issues={issues} reload={reload} />}{toast && <div className="toast" role="status"><span>✓</span>{toast}</div>}</main></StableNowContext.Provider>;
 }
 
 export default function YiApp({ initialNow }: { initialNow: number }) {
-  const stableNow = initialNow;
-  const [active, setActive] = useState<Screen>("Insights"); const [reflection, setReflection] = useState<ReflectionRequest | null>(null); const [cycleOpen, setCycleOpen] = useState(false); const [entries, setEntries] = useState<JournalEntry[]>(demoWellnessConnector.journal()); const [timers, setTimers] = useState<TimerPreset[]>(demoWellnessConnector.timers()); const [activities, setActivities] = useState<ActivityPreset[]>(demoWellnessConnector.activities());
-  const [cycleLog, setCycleLog] = useState<CycleLog>(initialCycleLog); const [books, setBooks] = useState<BookRecord[]>([]); const [dashboardWidgets, setDashboardWidgets] = useState<DashboardWidgetId[]>(defaultDashboardWidgets); const [toast, setToast] = useState(""); const [ready, setReady] = useState(false);
-  useEffect(() => { const timer = setTimeout(() => { const read = <T,>(key: string, fallback: T): T => { try { const value = localStorage.getItem(key); return value ? JSON.parse(value) : fallback; } catch { return fallback; } }; const savedEntries = read<JournalEntry[]>("yi-journal", demoWellnessConnector.journal()).map((entry) => entry.type === "Yoga" ? { ...entry, type: "Maintenance Yoga" } : entry); setEntries(savedEntries); setTimers(read("yi-timers", demoWellnessConnector.timers())); setBooks(read<BookRecord[]>("yi-books", [])); const savedActivities = read<ActivityPreset[]>("yi-activities", demoWellnessConnector.activities()).map((activity) => activity.name === "Yoga" ? { ...activity, name: "Maintenance Yoga" } : activity); const yogaDefaults = demoWellnessConnector.activities().filter((activity) => activity.name === "Maintenance Yoga" || activity.name === "Work Out Yoga"); setActivities([...savedActivities, ...yogaDefaults.filter((preset) => !savedActivities.some((activity) => activity.name === preset.name))]); const savedCycle = read<Partial<CycleLog>>("yi-cycle", initialCycleLog); setCycleLog({ ...initialCycleLog, ...savedCycle, history: savedCycle.history?.length ? savedCycle.history : initialCycleHistory }); const savedWidgets = read<DashboardWidgetId[]>("yi-dashboard-widgets", defaultDashboardWidgets); if (localStorage.getItem("yi-insights-workspace-v2") !== "1") { setDashboardWidgets(defaultDashboardWidgets); localStorage.setItem("yi-insights-workspace-v2", "1"); } else setDashboardWidgets(savedWidgets.filter((id) => id in dashboardWidgetMeta && !retiredDashboardWidgets.has(id))); setReady(true); }, 0); return () => clearTimeout(timer); }, []);
-  useEffect(() => { if (!ready) return; localStorage.setItem("yi-journal", JSON.stringify(entries)); localStorage.setItem("yi-timers", JSON.stringify(timers)); localStorage.setItem("yi-activities", JSON.stringify(activities)); localStorage.setItem("yi-cycle", JSON.stringify(cycleLog)); localStorage.setItem("yi-books", JSON.stringify(books)); localStorage.setItem("yi-dashboard-widgets", JSON.stringify(dashboardWidgets)); }, [ready, entries, timers, activities, cycleLog, books, dashboardWidgets]);
-  useEffect(() => { if (!toast) return; const id = setTimeout(() => setToast(""), 2800); return () => clearTimeout(id); }, [toast]);
-  const notify = useCallback((message: string) => setToast(message), []); const addEntry = (entry: JournalEntry) => { const loggedAt = entry.loggedAt ?? (entry.id >= 1e12 ? entry.id : Date.now()); const at = new Date(loggedAt); const moon = lunarPhase(at); const cycle = cycleSummary(cycleLog, at); const contextualEntry = { ...entry, loggedAt, lunarContext: entry.lunarContext ?? `${moon.name} · ${moon.illumination}%`, cycleContext: entry.cycleContext ?? `${cycle.phase} · day ${cycle.day}` }; setEntries((current) => [contextualEntry, ...current]); notify("Saved to your journal"); };
-  const updateEntry = (entry: JournalEntry) => { setEntries((current) => current.map((item) => item.id === entry.id ? entry : item)); notify("Journal entry updated"); };
-  const deleteEntry = (id: number) => { setEntries((current) => current.filter((item) => item.id !== id)); notify("Journal entry deleted"); };
-  const saveCycle = (log: CycleLog) => { const latest = log.history.at(-1); const cycle = cycleSummary(log, new Date()); setCycleLog(log); addEntry({ id: Date.now(), type: "Period", title: "Body & cycle check-in", date: "Today · just now", cycleContext: `${cycle.phase} · day ${cycle.day}`, note: `${log.flow} flow${log.symptoms.length ? ` · ${log.symptoms.join(", ")}` : ""}${log.temperature ? ` · ${log.temperature.toFixed(2)}°C` : ""}${latest ? ` · ${latest.cervicalMucus} mucus` : ""}` }); };
-  return <StableNowContext.Provider value={stableNow}><main className="app-shell"><Navigation active={active} setActive={setActive} /><div hidden={active !== "Insights"}><TodayScreen setActive={setActive} entries={entries} cycleLog={cycleLog} onCycleLog={() => setCycleOpen(true)} openReflection={setReflection} widgets={dashboardWidgets} setWidgets={setDashboardWidgets} addEntry={addEntry} books={books} setBooks={setBooks} /></div><div hidden={active !== "Practice"}><PracticeScreen timers={timers} setTimers={setTimers} openReflection={setReflection} notify={notify} /></div><div hidden={active !== "Journal"}><JournalScreen entries={entries} activities={activities} cycleLog={cycleLog} addEntry={addEntry} updateEntry={updateEntry} deleteEntry={deleteEntry} /></div>{reflection && <ReflectionModal request={reflection} activities={activities} setActivities={setActivities} onClose={() => setReflection(null)} onSave={addEntry} />}{cycleOpen && <CycleLogModal cycleLog={cycleLog} onClose={() => setCycleOpen(false)} onSave={saveCycle} />}{toast && <div className="toast" role="status"><span>✓</span>{toast}</div>}</main></StableNowContext.Provider>;
+  const snapshot = useSyncExternalStore(cloudSession.subscribe, cloudSession.snapshot, cloudSession.snapshot);
+  const repository = snapshot.mode === "cloud" ? cloudSession.repository() : undefined;
+  return <><YiExperience key={snapshot.mode === "cloud" ? `cloud:${snapshot.identity?.uid}:${snapshot.revision}` : "local"} initialNow={initialNow} repository={repository} /><CloudPanel snapshot={snapshot} /></>;
 }

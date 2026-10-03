@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { readFile, stat } from "node:fs/promises";
+import { readFile, readdir, stat } from "node:fs/promises";
 import test from "node:test";
 
 async function render() {
@@ -56,15 +56,15 @@ test("keeps durable timers and responsive controls in the product source", async
     readFile(new URL("../app/quotes.ts", import.meta.url), "utf8"),
   ]);
 
-  assert.match(page, /yi-active-practice/);
+  assert.doesNotMatch(page, /localStorage/);
   assert.match(page, /Date\.now\(\) \+ remaining \* 1000/);
   assert.match(page, /Notification\.requestPermission/);
   assert.match(page, /journalPrompts/);
-  assert.match(page, /yi-daily-quote-rotation/);
+  assert.match(page, /localRepository.loadQuote/);
   assert.match(page, /saved\.day === currentDay/);
   assert.match(page, /setQuotePosition\(dailyQuotePosition\(currentDay\)\)/);
   assert.match(page, /Edit reflection/);
-  assert.match(page, /yi-dashboard-widgets/);
+  assert.match(page, /useAppData/);
   assert.match(page, /customGongSounds/);
   assert.match(page, /Repeating gong minutes/);
   assert.match(page, /AssessmentPatternChart/);
@@ -96,14 +96,14 @@ test("keeps durable timers and responsive controls in the product source", async
   assert.match(page, /setPointerCapture/);
   assert.match(page, /elementsFromPoint/);
   assert.match(page, /cubic-bezier\(\.2,\.8,\.2,1\)/);
-  assert.match(page, /yi-insights-workspace-v2/);
-  assert.match(page, /yi-books/);
+  assert.match(page, /localRepository.loadPractice/);
+  assert.match(page, /DataTools/);
   assert.match(page, /BookLogModal/);
   assert.match(page, /journalContexts/);
   assert.match(page, /loggedAt/);
   assert.match(page, /lunarPhase\(new Date\(now\)\)/);
   assert.match(page, /StableNowContext\.Provider value=\{stableNow\}/);
-  assert.match(page, /displayDay\(at\.getTime\(\)\) - lastDay \+ 1/);
+  assert.match(page, /cycleSummary/);
   assert.doesNotMatch(page, /new Date\(`\$\{log\.lastPeriod\}T12:00:00`\)/);
   assert.doesNotMatch(page, /const \[draftId\] = useState\(\(\) => Date\.now\(\)\)/);
   assert.doesNotMatch(page, /if \(id === "lunar"\).*lunarPhase\(\)/);
@@ -131,7 +131,7 @@ test("keeps durable timers and responsive controls in the product source", async
   assert.match(css, /\.segmented:before/);
   assert.match(css, /\.range-tabs:before/);
   assert.match(css, /\.assessment-chart canvas/);
-  assert.match(css, /\.cube-face[^}]*border:0/);
+  assert.match(css, /\.cube-face[^}]*background-size:cover/);
   assert.match(css, /\.activity-history-chart/);
   assert.match(css, /\.cycle-tracking-chart/);
   assert.match(css, /\.mini-gong-mark/);
@@ -142,10 +142,16 @@ test("keeps durable timers and responsive controls in the product source", async
   assert.match(css, /safe-area-inset-bottom/);
   assert.match(layout, /Yi — practice, cycle & wellbeing/);
   assert.doesNotMatch(layout, /suppresshydrationwarning/);
-  assert.equal((quotes.match(/^ {2}"/gm) ?? []).length, 99);
+  assert.ok((quotes.match(/^ {2}"/gm) ?? []).length > 99, "Should include the expanded quote set from the Google Doc");
 
   assert.match(page, /"Gong 1": "\/gong-sounds\/gong-1\.wav"/);
   assert.match(page, /"Tripple Gong": "\/gong-sounds\/tripple-gong\.wav"/);
   const cubeSizes = await Promise.all(Array.from({ length: 41 }, (_, index) => stat(new URL(`../public/cube-media/cube-${String(index + 1).padStart(2, "0")}.jpg`, import.meta.url)).then((file) => file.size)));
   assert.ok(cubeSizes.every((size) => size < 100_000), "cube images should stay lightweight");
+  const pictureFiles = (await readdir(new URL("../public/cube-media", import.meta.url))).filter((file) => /^picture-\d{2}\.jpg$/.test(file));
+  assert.equal(pictureFiles.length, 43, "all Pictures for cube images should be included");
+  const pictureSizes = await Promise.all(pictureFiles.map((file) => stat(new URL(`../public/cube-media/${file}`, import.meta.url)).then((entry) => entry.size)));
+  assert.ok(pictureSizes.every((size) => size < 100_000), "source photos should be converted to lightweight thumbnails");
+  assert.match(page, /picture-\$\{String\(index \+ 1\)\.padStart\(2, "0"\)\}\.jpg/);
+  assert.doesNotMatch(page, /\/cube-media\/cube-/);
 });
