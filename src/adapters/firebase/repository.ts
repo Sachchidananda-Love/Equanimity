@@ -17,11 +17,11 @@ const clean = <T>(value: T): T => JSON.parse(JSON.stringify(value));
 function validate(data: AppData) {
   parseArray(data.journal, journalValid); parseArray(data.timers, timerValid); parseArray(data.activities, activityValid); parseArray(data.books, bookValid); parseArray(data.health, healthValid);
   if (!cycleValid(data.cycle) || !Array.isArray(data.widgets) || !data.widgets.every(id => typeof id === "string") || new Set(data.widgets).size !== data.widgets.length) throw new Error("Invalid cloud data; writes blocked");
-  if (separateLegacySamples(data).review.length || data.cycle.history.some(record => record.recordOrigin !== "user")) throw new Error("Samples and unverified legacy health history cannot be uploaded in Phase 3A");
+  if (separateLegacySamples(data).review.length || data.cycle.history.some(record => record.recordOrigin !== "user")) throw new Error("Samples and unverified legacy health history cannot be uploaded");
   function scan(value: unknown) {
     if (Array.isArray(value)) value.forEach(scan);
     else if (object(value)) for (const [key, child] of Object.entries(value)) {
-      if (/^(?:rawCsv|csvFile|tempdropCsv|permissionState|healthKitPermissions|queryAnchor|healthKitAnchor|rawPayload)$/i.test(key)) throw new Error("Device-private/import payloads cannot be stored in Phase 3A");
+      if (/^(?:rawCsv|csvFile|tempdropCsv|permissionState|healthKitPermissions|queryAnchor|healthKitAnchor|rawPayload)$/i.test(key)) throw new Error("Device-private/import payloads cannot be stored");
       scan(child);
     }
   }
@@ -94,7 +94,7 @@ export function createFirebaseRepository(port: FirestorePort, uid: string): Data
     }
     if ("widgets" in changes) writes.push({ path: `${root}/settings/dashboard`, data: envelope({ widgets: next.widgets }) });
     if (!writes.length) return;
-    if (writes.length > 400) throw new Error("Large transfers are deferred to verified Phase 3B migration");
+    if (writes.length > 400) throw new Error("Too many records changed in one operation (maximum 400). No partial write performed");
     writes.push({ path: revisionPath, data: envelope({ revision: revision + 1 }) });
     guard(); await port.commit(revisionPath, revision, writes); guard();
     writes.forEach(write => existingCollections.add(write.path.split("/")[2]));

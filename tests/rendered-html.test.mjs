@@ -14,13 +14,20 @@ async function render() {
   );
 }
 
-test("server-renders the complete Yi experience", async () => {
+test("server-renders the configured cloud sign-in boundary or local Yi experience", async () => {
   const response = await render();
   assert.equal(response.status, 200);
   assert.match(response.headers.get("content-type") ?? "", /^text\/html\b/i);
 
   const html = await response.text();
   assert.match(html, /<title>Yi — practice, cycle &amp; wellbeing<\/title>/i);
+  if (html.includes("Sign in to open your private cloud")) {
+    assert.match(html, /Private cloud data is closed/);
+    assert.match(html, /type="password"/);
+    assert.match(html, /Use local-only development\/fallback data/);
+    assert.doesNotMatch(html, /Your wellbeing|Meditation timer|Body &amp; cycle check-in/);
+    return;
+  }
   assert.match(html, /Your wellbeing/);
   assert.match(html, /Meditation timer/);
   assert.doesNotMatch(html, /Settle in\./);

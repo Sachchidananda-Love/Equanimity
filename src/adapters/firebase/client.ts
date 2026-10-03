@@ -26,6 +26,7 @@ export function connectFirebase(configuration: FirebaseConfiguration): CloudGate
         const snapshot = await transaction.get(doc(db, path));
         const actual = snapshot.exists() ? snapshot.data().record?.revision : 0;
         if (actual !== expected) throw new Error("Cloud revision conflict; reload before editing");
+        if (auth.currentUser?.uid !== uid) throw new Error("Authentication changed during the write");
         for (const write of writes) transaction.set(doc(db, write.path), write.data);
       });
     },

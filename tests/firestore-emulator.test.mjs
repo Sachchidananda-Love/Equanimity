@@ -7,6 +7,8 @@ import { deleteApp } from "firebase/app";
 import { connectFirebase } from "../src/adapters/firebase/client.ts";
 import { createCycleDraft, updateCycleField } from "../src/domain/cycle/records.ts";
 import { manualHealthRecords } from "../src/services/health-service.ts";
+import { exerciseCloudCrud } from "./helpers/cloud-crud.mjs";
+import { createCloudSession } from "../src/services/cloud-session.ts";
 
 const projectId="demo-yi-phase3a";
 test("real Firestore rules deny anonymous, foreign UID and unapproved accounts",async()=>{
@@ -22,6 +24,13 @@ test("real Firestore rules deny anonymous, foreign UID and unapproved accounts",
     await assertFails(setDoc(doc(unapproved,"users/unapproved/journalEntries/test"),{...value,ownerUid:"unapproved"}));await assertFails(setDoc(doc(unapproved,"privateAccess/unapproved"),{enabled:true}));
     await assertFails(setDoc(doc(a,"users/owner-a/journalEntries/foreign-owner"),{...value,ownerUid:"owner-b"}));await assertFails(deleteDoc(doc(a,"users/owner-a/journalEntries/test")));
     await assertFails(setDoc(doc(a,"users/owner-a/migrations/not-yet"),value));await assertFails(setDoc(doc(a,"users/owner-a/importBatches/no-csv"),value));
+    for (const section of ["settings","journalEntries","timerPresets","activityPresets","books","cycleEvents","healthRecords"]) {
+      const path=`users/owner-a/${section}/ownership-test`;
+      await assertSucceeds(setDoc(doc(a,path),value));await assertSucceeds(getDoc(doc(a,path)));
+      await assertSucceeds(setDoc(doc(a,path),{...value,record:{...value.record,title:"Updated"}}));
+      await assertSucceeds(setDoc(doc(a,path),{...value,deleted:true}));
+      await assertFails(getDoc(doc(anonymous,path)));await assertFails(getDoc(doc(b,path)));await assertFails(getDocs(collection(b,`users/owner-a/${section}`)));await assertFails(setDoc(doc(b,path),value));
+    }
   }finally{await env.cleanup();}
 });
 
@@ -43,6 +52,9 @@ test("actual email/password Auth and Firebase repository round-trip use only dem
     const reloaded=await gateway.repository(user.localId).load([]);assert.deepEqual(reloaded.health.toSorted((a,b)=>a.id.localeCompare(b.id)),health.toSorted((a,b)=>a.id.localeCompare(b.id)));assert.deepEqual(reloaded.cycle.history,[cycle]);
     await repository.save("journal",[]);assert.deepEqual((await gateway.repository(user.localId).load([])).journal,[]);
     const saved=await getDoc(doc(env.authenticatedContext(user.localId).firestore(),`users/${user.localId}/journalEntries/s-emulator-only-test`));assert.equal(saved.data().deleted,true);assert.deepEqual(saved.data().record,record);
-    await gateway.signOut();await assert.rejects(repository.load([]),/UID/);assert.ok(events.some(event=>event?.uid===user.localId));
+    const expected=await exerciseCloudCrud(()=>gateway.repository(user.localId),async(section,id)=>(await getDoc(doc(env.authenticatedContext(user.localId).firestore(),`users/${user.localId}/${section}/${id}`))).data());
+    const session=createCloudSession(async()=>gateway,{cloudPrimary:true});await session.signIn("phase3a-test@example.invalid","throwaway-password-123");assert.equal(session.snapshot().mode,"cloud");const selected=session.repository();assert.deepEqual((await selected.load([])).journal,expected.journal);
+    await session.signOut();assert.equal(session.snapshot().mode,"signed-out");await assert.rejects(selected.load([]),/cancelled/);await assert.rejects(repository.load([]),/UID/);assert.ok(events.some(event=>event?.uid===user.localId));
+    await session.signIn("phase3a-test@example.invalid","throwaway-password-123");const restored=await session.repository().load([]);for(const key of Object.keys(expected))assert.deepEqual(restored[key],expected[key]);await session.signOut();
   }finally{off();await env.cleanup();const {getApp}=await import("firebase/app");await deleteApp(getApp("yi-private-cloud"));}
 });

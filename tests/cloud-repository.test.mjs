@@ -7,6 +7,7 @@ import { demoEntries, initialCycleHistory } from "../src/fixtures/demo-data.ts";
 import { createCycleDraft, updateCycleField } from "../src/domain/cycle/records.ts";
 import { manualHealthRecords } from "../src/services/health-service.ts";
 import { createLocalRepository } from "../src/adapters/local/repository.ts";
+import { exerciseCloudCrud } from "./helpers/cloud-crud.mjs";
 
 class Port {
   uid="owner-a"; documents=new Map(); reads=0; writes=0; fail=false;
@@ -16,6 +17,10 @@ class Port {
   async commit(path,expected,writes){if(this.fail)throw Error("offline");if((this.documents.get(path)?.record.revision??0)!==expected)throw Error("revision conflict");for(const write of writes)this.documents.set(write.path,structuredClone(write.data));this.writes++;}
 }
 const entry={id:"throwaway-one",type:"Journal",title:"Phase3A test",date:"2026-10-03",loggedAt:1791028800000,note:"Synthetic test only"};
+
+test("all cloud domains support create, update, reload, tombstones and stable-ID recreation",async()=>{
+  const port=new Port();await exerciseCloudCrud(()=>createFirebaseRepository(port,"owner-a"),async(collection,id)=>port.documents.get(`users/owner-a/${collection}/${id}`));
+});
 
 test("cloud reads require an authenticated matching UID",async()=>{
   const port=new Port();port.uid=null;const repo=createFirebaseRepository(port,"owner-a");await assert.rejects(repo.load([]),/UID/);assert.equal(port.reads,0);
@@ -68,13 +73,40 @@ test("disabled/missing config does not initialize Firebase, and emulator mode ca
   assert.throws(()=>readFirebaseConfiguration({VITE_FIREBASE_ENABLED:"true",VITE_FIREBASE_API_KEY:"key",VITE_FIREBASE_AUTH_DOMAIN:"domain",VITE_FIREBASE_PROJECT_ID:"production",VITE_FIREBASE_APP_ID:"app",VITE_FIREBASE_USE_EMULATORS:"true"}),/demo-/);
 });
 
-test("pending cloud operations prevent reload, local switching and sign-out",async()=>{
+test("pending cloud operations prevent reload and local switching",async()=>{
   const port=new Port();const api=gateway(port);const session=createCloudSession(async()=>api);
   await session.signIn("a@example.invalid","test-password");session.selectCloud();const cloud=session.repository();await cloud.load([]);
   let release;const commit=port.commit.bind(port);port.commit=async(...args)=>{await new Promise(resolve=>{release=resolve;});return commit(...args);};
   const saving=cloud.save("journal",[entry]);await Promise.resolve();
-  assert.equal(session.snapshot().save,"pending");assert.throws(()=>session.selectCloud(),/pending/);assert.throws(()=>session.selectLocal(),/pending/);await assert.rejects(session.signOut(),/pending/);
+  assert.equal(session.snapshot().save,"pending");assert.throws(()=>session.selectCloud(),/pending/);assert.throws(()=>session.selectLocal(),/pending/);
   release();await saving;assert.equal(session.snapshot().save,"synced");session.selectLocal();assert.equal(session.snapshot().mode,"local");
+});
+
+test("cloud-primary sign-in restores cloud records; signed-out and local modes never import",async()=>{
+  const port=new Port();port.uid=null;const api=gateway(port);const session=createCloudSession(async()=>api,{cloudPrimary:true});
+  assert.equal(session.snapshot().mode,"signed-out");assert.equal(session.repository(),undefined);assert.equal(port.reads,0);
+  await session.signIn("a@example.invalid","wrong");assert.equal(session.snapshot().mode,"signed-out");assert.equal(port.reads,0);
+  await session.signIn("a@example.invalid","test-password");assert.equal(session.snapshot().mode,"cloud");const old=session.repository();await old.load([]);await old.save("journal",[entry]);
+  session.selectLocal();assert.equal(session.snapshot().mode,"local");assert.equal(session.repository(),undefined);session.selectCloud();assert.deepEqual((await session.repository().load([])).journal,[entry]);
+  await session.signOut();assert.equal(session.snapshot().mode,"signed-out");assert.equal(session.repository(),undefined);await assert.rejects(old.load([]),/cancelled/);
+  await session.signIn("a@example.invalid","test-password");assert.equal(session.snapshot().mode,"cloud");assert.deepEqual((await session.repository().load([])).journal,[entry]);
+  const restarted=createCloudSession(async()=>api,{cloudPrimary:true});assert.equal(restarted.snapshot().mode,"signed-out");await restarted.signIn("a@example.invalid","test-password");assert.deepEqual((await restarted.repository().load([])).journal,[entry]);
+});
+
+test("permission-denied cloud loads stay cloud-only and require an explicit retry",async()=>{
+  const port=new Port();port.read=async()=>{throw Object.assign(Error("denied"),{code:"permission-denied"});};const api=gateway(port);const session=createCloudSession(async()=>api,{cloudPrimary:true});await session.signIn("a@example.invalid","test-password");
+  await assert.rejects(session.repository().load([]));assert.equal(session.snapshot().mode,"cloud");assert.equal(session.snapshot().save,"failed");assert.match(session.snapshot().error,/permission denied/i);assert.equal(port.writes,0);assert.throws(()=>session.repository().save("journal",[entry]),/Reload/);
+  await session.signOut();assert.equal(session.snapshot().mode,"signed-out");
+});
+
+test("sign-out closes a pending load immediately and ignores late completion",async()=>{
+  const port=new Port();const api=gateway(port);const session=createCloudSession(async()=>api,{cloudPrimary:true});await session.signIn("a@example.invalid","test-password");const old=session.repository();let release;
+  port.read=async()=>{await new Promise(resolve=>{release=resolve;});return null;};const loading=old.load([]);await Promise.resolve();await session.signOut();assert.equal(session.snapshot().mode,"signed-out");release();await assert.rejects(loading,/UID|cancelled/);assert.equal(session.snapshot().save,"signed-out");
+});
+
+test("cloud-primary account changes mount only the new UID dataset",async()=>{
+  const port=new Port();const api=gateway(port);const session=createCloudSession(async()=>api,{cloudPrimary:true});await session.signIn("a@example.invalid","test-password");const a=session.repository();await a.load([]);await a.save("journal",[entry]);
+  api.change({uid:"owner-b",email:"b@example.invalid"});assert.equal(session.snapshot().mode,"cloud");assert.deepEqual((await session.repository().load([])).journal,[]);await assert.rejects(a.load([]),/cancelled/);
 });
 
 test("cloud reload restores journal chronology instead of document ID order",async()=>{

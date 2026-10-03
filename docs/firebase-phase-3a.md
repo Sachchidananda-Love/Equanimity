@@ -1,5 +1,7 @@
 # Phase 3A: optional private Firebase persistence
 
+Historical Phase 3A report. The subsequent [cloud-primary persistence phase](./cloud-primary-persistence.md) supersedes the local-first startup/selection behavior and the proposed migration next step below. Existing local data is test/demo-only; **no production local-to-cloud migration is planned or implemented**. Console configuration and the UID-owned schema/rules remain applicable.
+
 Only Authentication and Firestore are implemented. No live Firebase project was configured, no rules were deployed, and no personal browser storage was inspected or uploaded. Existing uncommitted work was preserved. Phase 3B, native packaging, HealthKit, Tempdrop, Storage, and Analytics are not implemented.
 
 ## Manual Firebase Console setup — required before enabling cloud
