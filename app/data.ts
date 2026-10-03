@@ -94,9 +94,9 @@ export const demoCycle = {
 };
 
 export const demoTimers: TimerPreset[] = [
-  { id: 1, name: "Morning clarity", seconds: 600, color: "sage", gongs: [300], startGong: "Deep temple bowl", endGong: "Deep temple bowl" },
-  { id: 2, name: "Deep sit", seconds: 1200, color: "gold", interval: 300, intervalGong: "Soft woodblock", startGong: "Bright singing bowl", endGong: "Deep temple bowl" },
-  { id: 3, name: "Evening release", seconds: 900, color: "coral", gongs: [180, 780], startGong: "Deep temple bowl", endGong: "Bright singing bowl" },
+  { id: 1, name: "Morning clarity", seconds: 600, color: "sage", gongs: [300], startGong: "Gong 1", endGong: "Gong 1" },
+  { id: 2, name: "Deep sit", seconds: 1200, color: "gold", interval: 300, intervalGong: "Gong 3", startGong: "Gong 2", endGong: "Gong 1" },
+  { id: 3, name: "Evening release", seconds: 900, color: "coral", gongs: [180, 780], startGong: "Gong 1", endGong: "Gong 2" },
 ];
 
 export const demoActivities: ActivityPreset[] = [

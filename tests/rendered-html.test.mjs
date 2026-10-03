@@ -60,6 +60,9 @@ test("keeps durable timers and responsive controls in the product source", async
   assert.match(page, /Date\.now\(\) \+ remaining \* 1000/);
   assert.match(page, /Notification\.requestPermission/);
   assert.match(page, /journalPrompts/);
+  assert.match(page, /yi-daily-quote-rotation/);
+  assert.match(page, /saved\.day === currentDay/);
+  assert.match(page, /setQuotePosition\(dailyQuotePosition\(currentDay\)\)/);
   assert.match(page, /Edit reflection/);
   assert.match(page, /yi-dashboard-widgets/);
   assert.match(page, /customGongSounds/);
@@ -100,6 +103,9 @@ test("keeps durable timers and responsive controls in the product source", async
   assert.match(page, /loggedAt/);
   assert.match(page, /lunarPhase\(new Date\(now\)\)/);
   assert.match(page, /StableNowContext\.Provider value=\{stableNow\}/);
+  assert.match(page, /displayDay\(at\.getTime\(\)\) - lastDay \+ 1/);
+  assert.doesNotMatch(page, /new Date\(`\$\{log\.lastPeriod\}T12:00:00`\)/);
+  assert.doesNotMatch(page, /const \[draftId\] = useState\(\(\) => Date\.now\(\)\)/);
   assert.doesNotMatch(page, /if \(id === "lunar"\).*lunarPhase\(\)/);
   assert.match(wrapper, /dynamic = "force-dynamic"/);
   assert.match(wrapper, /initialNow=\{Date\.now\(\)\}/);
@@ -135,8 +141,11 @@ test("keeps durable timers and responsive controls in the product source", async
   assert.match(css, /@media \(max-width:360px\)/);
   assert.match(css, /safe-area-inset-bottom/);
   assert.match(layout, /Yi — practice, cycle & wellbeing/);
+  assert.doesNotMatch(layout, /suppresshydrationwarning/);
   assert.equal((quotes.match(/^ {2}"/gm) ?? []).length, 99);
 
-  const cubeSizes = await Promise.all(Array.from({ length: 23 }, (_, index) => stat(new URL(`../public/cube-media/cube-${String(index + 1).padStart(2, "0")}.jpg`, import.meta.url)).then((file) => file.size)));
+  assert.match(page, /"Gong 1": "\/gong-sounds\/gong-1\.wav"/);
+  assert.match(page, /"Tripple Gong": "\/gong-sounds\/tripple-gong\.wav"/);
+  const cubeSizes = await Promise.all(Array.from({ length: 41 }, (_, index) => stat(new URL(`../public/cube-media/cube-${String(index + 1).padStart(2, "0")}.jpg`, import.meta.url)).then((file) => file.size)));
   assert.ok(cubeSizes.every((size) => size < 100_000), "cube images should stay lightweight");
 });

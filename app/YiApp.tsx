@@ -26,6 +26,13 @@ type ReflectionRequest = { duration: number; type?: string };
 
 const StableNowContext = createContext<number | null>(null);
 const DISPLAY_TIME_ZONE = "America/Toronto";
+const MILLISECONDS_PER_DAY = 86400000;
+const displayDateParts = new Intl.DateTimeFormat("en-CA", {
+  timeZone: DISPLAY_TIME_ZONE,
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+});
 
 function useStableNow() {
   const now = useContext(StableNowContext);
@@ -33,10 +40,68 @@ function useStableNow() {
   return now;
 }
 
+function dateOnlyParts(value: string) {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  if (!match) return null;
+  return { year: Number(match[1]), month: Number(match[2]), day: Number(match[3]) };
+}
+
+function dateOnlyDay(value: string) {
+  const parts = dateOnlyParts(value);
+  return parts ? Math.floor(Date.UTC(parts.year, parts.month - 1, parts.day) / MILLISECONDS_PER_DAY) : null;
+}
+
+function dateOnlyTimestamp(value: string) {
+  const parts = dateOnlyParts(value);
+  return parts ? Date.UTC(parts.year, parts.month - 1, parts.day, 12) : Number.NaN;
+}
+
+function displayDay(timestamp: number) {
+  const parts = Object.fromEntries(displayDateParts.formatToParts(timestamp).map((part) => [part.type, part.value]));
+  return Math.floor(Date.UTC(Number(parts.year), Number(parts.month) - 1, Number(parts.day)) / MILLISECONDS_PER_DAY);
+}
+
+type StoredQuoteRotation = { signature: string; order: number[]; day: number; position: number };
+const quoteRotationKey = "yi-daily-quote-rotation";
+const quoteListSignature = dailyQuotes.reduce((hash, quote) => {
+  for (let index = 0; index < quote.length; index += 1) hash = Math.imul(hash ^ quote.charCodeAt(index), 16777619);
+  return hash;
+}, 2166136261).toString(36);
+
+function shuffledQuoteOrder() {
+  const order = dailyQuotes.map((_, index) => index);
+  for (let index = order.length - 1; index > 0; index -= 1) {
+    const swap = Math.floor(Math.random() * (index + 1));
+    [order[index], order[swap]] = [order[swap], order[index]];
+  }
+  return order;
+}
+
+function validQuoteOrder(value: unknown): value is number[] {
+  return Array.isArray(value) && value.length === dailyQuotes.length && new Set(value).size === dailyQuotes.length && value.every((item) => Number.isInteger(item) && item >= 0 && item < dailyQuotes.length);
+}
+
+function dailyQuotePosition(day: number) {
+  return ((day % dailyQuotes.length) + dailyQuotes.length) % dailyQuotes.length;
+}
+
 const navItems: { label: Screen; icon: string }[] = [
   { label: "Insights", icon: "◫" }, { label: "Practice", icon: "◷" }, { label: "Journal", icon: "▤" },
 ];
-const gongNames = ["Deep temple bowl", "Bright singing bowl", "Soft woodblock", "Gentle bell"];
+const gongNames = ["Gong 1", "Gong 2", "Gong 3", "Tripple Gong"];
+const gongSources: Record<string, string> = {
+  "Gong 1": "/gong-sounds/gong-1.wav",
+  "Gong 2": "/gong-sounds/gong-2.wav",
+  "Gong 3": "/gong-sounds/gong-3.wav",
+  "Tripple Gong": "/gong-sounds/tripple-gong.wav",
+};
+const legacyGongNames: Record<string, string> = {
+  "Deep temple bowl": "Gong 1",
+  "Bright singing bowl": "Gong 2",
+  "Soft woodblock": "Gong 3",
+  "Gentle bell": "Tripple Gong",
+};
+function normalizedGongName(gong?: string) { return gong && gongSources[gong] ? gong : legacyGongNames[gong ?? ""] ?? gongNames[0]; }
 const assessmentGroups = [
   { name: "Awakening", label: "Seven factors of awakening", items: sevenFactors },
   { name: "Faculties", label: "Five spiritual faculties", items: fiveFaculties },
@@ -98,7 +163,7 @@ const retiredDashboardWidgets = new Set<DashboardWidgetId>(["cycle", "practice-s
 const allDashboardWidgets = (Object.keys(dashboardWidgetMeta) as DashboardWidgetId[]).filter((id) => !retiredDashboardWidgets.has(id));
 type CubeMedia = { type: "image"; src: string };
 const cubeMedia: CubeMedia[] = [
-  ...Array.from({ length: 23 }, (_, index) => ({ type: "image" as const, src: `/cube-media/cube-${String(index + 1).padStart(2, "0")}.jpg` })),
+  ...Array.from({ length: 41 }, (_, index) => ({ type: "image" as const, src: `/cube-media/cube-${String(index + 1).padStart(2, "0")}.jpg` })),
 ];
 const hiddenCubeFaceOrder = [2, 5, 3, 4, 0, 1];
 const initialCycleHistory: CycleDayLog[] = [
@@ -146,15 +211,9 @@ function formatTime(totalSeconds: number, includeHours = false) {
 function slug(value: string) { return value.toLowerCase().replace(/[^a-z0-9]+/g, "-"); }
 function dismissBackdrop(event: React.PointerEvent<HTMLDivElement>, onClose: () => void) { if (event.target === event.currentTarget) onClose(); }
 
-function tone(gong = "Deep temple bowl") {
+function tone(gong = gongNames[0]) {
   try {
-    const AudioContextClass = window.AudioContext || (window as typeof window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
-    if (!AudioContextClass) return; const context = new AudioContextClass(); const oscillator = context.createOscillator(); const gain = context.createGain();
-    const bright = gong.includes("Bright") || gong.includes("bell"); const wood = gong.includes("woodblock");
-    oscillator.type = wood ? "triangle" : "sine"; oscillator.frequency.setValueAtTime(bright ? 420 : wood ? 330 : 220, context.currentTime);
-    oscillator.frequency.exponentialRampToValueAtTime(bright ? 170 : 110, context.currentTime + (wood ? .45 : 1.8));
-    gain.gain.setValueAtTime(.001, context.currentTime); gain.gain.exponentialRampToValueAtTime(.22, context.currentTime + .025); gain.gain.exponentialRampToValueAtTime(.001, context.currentTime + (wood ? .65 : 2.2));
-    oscillator.connect(gain).connect(context.destination); oscillator.start(); oscillator.stop(context.currentTime + (wood ? .7 : 2.25));
+    const audio = new Audio(gongSources[normalizedGongName(gong)]); audio.volume = .82; void audio.play().catch(() => undefined);
   } catch { /* sound is an enhancement */ }
 }
 
@@ -206,8 +265,8 @@ function lunarPhase(date: Date) {
 }
 
 function cycleSummary(log: CycleLog, at: Date) {
-  const last = new Date(`${log.lastPeriod}T12:00:00`);
-  const day = Math.max(1, Math.floor((at.getTime() - last.getTime()) / 86400000) + 1);
+  const lastDay = dateOnlyDay(log.lastPeriod);
+  const day = Math.max(1, lastDay === null ? 1 : displayDay(at.getTime()) - lastDay + 1);
   const ovulation = Math.max(8, log.averageCycle - 14); const fertileStart = ovulation - 5;
   const phase = day <= log.averagePeriod ? "Menstrual phase" : day < ovulation - 1 ? "Follicular phase" : day <= ovulation + 1 ? "Ovulation window" : "Luteal phase";
   return { day, phase, nextPeriodIn: Math.max(0, log.averageCycle - day + 1), fertileText: day < fertileStart ? `Fertile window estimated in ${fertileStart - day} days` : day <= ovulation + 1 ? "Within estimated fertile window" : "Estimated fertile window has passed" };
@@ -262,10 +321,10 @@ function InsightWidgetCard({ id, entries, cycleLog, onExpand }: { id: InsightWid
 function widgetCategory(id: DashboardWidgetId) { if (id.startsWith("insight-")) return "Analytics"; if (id.startsWith("summary-")) return "Summaries"; return "Daily tools"; }
 
 function BookAnalyticsCard({ books, onExpand, onLog }: { books: BookRecord[]; onExpand?: () => void; onLog?: () => void }) {
-  const now = useStableNow(); const [range, setRange] = useState("1yr"); const ranges = ["7d", "30d", "90d", "1yr", "All"]; const cutoff = rangeCutoff(range, now); const dated = books.filter((book) => { if (!book.startedOn && !book.finishedOn) return false; const start = book.startedOn ? new Date(`${book.startedOn}T12:00:00`).getTime() : 0; const end = book.finishedOn ? new Date(`${book.finishedOn}T12:00:00`).getTime() : now; return !cutoff || end >= cutoff || start >= cutoff; }); const times = dated.flatMap((book) => [book.startedOn, book.finishedOn].filter(Boolean).map((value) => new Date(`${value}T12:00:00`).getTime())); const min = cutoff || (times.length ? Math.min(...times) : now); const max = times.length ? Math.max(...times, now) : now + 1; const span = Math.max(86400000, max - min);
+  const now = useStableNow(); const [range, setRange] = useState("1yr"); const ranges = ["7d", "30d", "90d", "1yr", "All"]; const cutoff = rangeCutoff(range, now); const dated = books.filter((book) => { if (!book.startedOn && !book.finishedOn) return false; const start = book.startedOn ? dateOnlyTimestamp(book.startedOn) : 0; const end = book.finishedOn ? dateOnlyTimestamp(book.finishedOn) : now; return !cutoff || end >= cutoff || start >= cutoff; }); const times = dated.flatMap((book) => [book.startedOn, book.finishedOn].filter(Boolean).map((value) => dateOnlyTimestamp(value))); const min = cutoff || (times.length ? Math.min(...times) : now); const max = times.length ? Math.max(...times, now) : now + 1; const span = Math.max(MILLISECONDS_PER_DAY, max - min);
   // The card remains fully keyboard accessible through its explicit Expand button.
   // eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions
-  return <article className={`book-analytics-card card ${onExpand ? "expandable-widget" : ""}`} role={onExpand ? "button" : undefined} tabIndex={onExpand ? 0 : undefined} onClick={onExpand} onKeyDown={(event) => { if (onExpand && (event.key === "Enter" || event.key === " ")) onExpand(); }}><div className="card-heading"><div><p className="eyebrow">Reading life</p><h2>Books read</h2></div><div className="card-actions">{onLog && <button className="log-book-button" onClick={(event) => { event.stopPropagation(); onLog(); }}>＋ Log book</button>}{onExpand && <button className="expand-button" onClick={(event) => { event.stopPropagation(); onExpand(); }}>Expand ↗</button>}</div></div><div className="range-tabs compact-ranges" style={{ "--range-offset": `${ranges.indexOf(range) * 100}%` } as React.CSSProperties}>{ranges.map((item) => <button key={item} className={range === item ? "active" : ""} onClick={(event) => { event.stopPropagation(); setRange(item); }}>{item}</button>)}</div><div className="book-timeline">{dated.slice(-8).map((book, index) => { const start = book.startedOn ? Math.max(min, new Date(`${book.startedOn}T12:00:00`).getTime()) : book.finishedOn ? new Date(`${book.finishedOn}T12:00:00`).getTime() : min; const end = book.finishedOn ? new Date(`${book.finishedOn}T12:00:00`).getTime() : now; return <div key={book.id}><span>{book.title}</span><i><em style={{ "--book-color": patternColors[index % patternColors.length], marginLeft: `${Math.max(0, (start - min) / span * 100)}%`, width: `${Math.max(3, (end - start) / span * 100)}%` } as React.CSSProperties} /></i></div>; })}{dated.length === 0 && <p>No dated books overlap this range.</p>}</div><div className="book-list">{books.slice(-4).reverse().map((book) => <div key={book.id}><span><b>{book.title}</b><small>{book.author || (book.finished ? "Finished" : "In progress")}</small></span><em>{book.finishedOn ? new Date(`${book.finishedOn}T12:00:00`).toLocaleDateString("en-CA", { month: "short", year: "numeric", timeZone: DISPLAY_TIME_ZONE }) : book.yearRead || (book.finished ? "Finished" : "Reading")}</em></div>)}</div></article>;
+  return <article className={`book-analytics-card card ${onExpand ? "expandable-widget" : ""}`} role={onExpand ? "button" : undefined} tabIndex={onExpand ? 0 : undefined} onClick={onExpand} onKeyDown={(event) => { if (onExpand && (event.key === "Enter" || event.key === " ")) onExpand(); }}><div className="card-heading"><div><p className="eyebrow">Reading life</p><h2>Books read</h2></div><div className="card-actions">{onLog && <button className="log-book-button" onClick={(event) => { event.stopPropagation(); onLog(); }}>＋ Log book</button>}{onExpand && <button className="expand-button" onClick={(event) => { event.stopPropagation(); onExpand(); }}>Expand ↗</button>}</div></div><div className="range-tabs compact-ranges" style={{ "--range-offset": `${ranges.indexOf(range) * 100}%` } as React.CSSProperties}>{ranges.map((item) => <button key={item} className={range === item ? "active" : ""} onClick={(event) => { event.stopPropagation(); setRange(item); }}>{item}</button>)}</div><div className="book-timeline">{dated.slice(-8).map((book, index) => { const start = book.startedOn ? Math.max(min, dateOnlyTimestamp(book.startedOn)) : book.finishedOn ? dateOnlyTimestamp(book.finishedOn) : min; const end = book.finishedOn ? dateOnlyTimestamp(book.finishedOn) : now; return <div key={book.id}><span>{book.title}</span><i><em style={{ "--book-color": patternColors[index % patternColors.length], marginLeft: `${Math.max(0, (start - min) / span * 100)}%`, width: `${Math.max(3, (end - start) / span * 100)}%` } as React.CSSProperties} /></i></div>; })}{dated.length === 0 && <p>No dated books overlap this range.</p>}</div><div className="book-list">{books.slice(-4).reverse().map((book) => <div key={book.id}><span><b>{book.title}</b><small>{book.author || (book.finished ? "Finished" : "In progress")}</small></span><em>{book.finishedOn ? new Date(dateOnlyTimestamp(book.finishedOn)).toLocaleDateString("en-CA", { month: "short", year: "numeric", timeZone: DISPLAY_TIME_ZONE }) : book.yearRead || (book.finished ? "Finished" : "Reading")}</em></div>)}</div></article>;
 }
 
 function BookLogModal({ books, onSave, onClose }: { books: BookRecord[]; onSave: (book: BookRecord) => void; onClose: () => void }) {
@@ -283,10 +342,35 @@ function AddDashboardWidgetModal({ current, renderPreview, onAdd, onClose }: { c
 }
 
 function TodayScreen({ setActive, entries, cycleLog, onCycleLog, openReflection, widgets, setWidgets, addEntry, books, setBooks }: { setActive: (screen: Screen) => void; entries: JournalEntry[]; cycleLog: CycleLog; onCycleLog: () => void; openReflection: (request: ReflectionRequest) => void; widgets: DashboardWidgetId[]; setWidgets: React.Dispatch<React.SetStateAction<DashboardWidgetId[]>>; addEntry: (entry: JournalEntry) => void; books: BookRecord[]; setBooks: React.Dispatch<React.SetStateAction<BookRecord[]>> }) {
-  const now = useStableNow(); const [quoteOrder, setQuoteOrder] = useState(() => dailyQuotes.map((_, index) => index)); const [quotePosition, setQuotePosition] = useState(0); const [editing, setEditing] = useState(false); const [adding, setAdding] = useState(false); const [expanded, setExpanded] = useState<InsightWidgetId | null>(null); const [booksExpanded, setBooksExpanded] = useState(false); const [bookLogOpen, setBookLogOpen] = useState(false); const [dragging, setDragging] = useState<DashboardWidgetId | null>(null); const [reflection, setReflection] = useState("");
+  const now = useStableNow(); const [quoteOrder, setQuoteOrder] = useState(() => dailyQuotes.map((_, index) => index)); const [quotePosition, setQuotePosition] = useState(0); const [quoteDay, setQuoteDay] = useState(() => displayDay(now)); const [quoteReady, setQuoteReady] = useState(false); const [editing, setEditing] = useState(false); const [adding, setAdding] = useState(false); const [expanded, setExpanded] = useState<InsightWidgetId | null>(null); const [booksExpanded, setBooksExpanded] = useState(false); const [bookLogOpen, setBookLogOpen] = useState(false); const [dragging, setDragging] = useState<DashboardWidgetId | null>(null); const [reflection, setReflection] = useState("");
   const todayLabel = new Date(now).toLocaleDateString("en-CA", { weekday: "long", month: "long", day: "numeric", timeZone: DISPLAY_TIME_ZONE });
   const holdTimer = useRef<number | null>(null); const pointerStart = useRef({ x: 0, y: 0 }); const draggingRef = useRef<DashboardWidgetId | null>(null); const dashboardRef = useRef<HTMLDivElement | null>(null); const dragOffset = useRef({ x: 0, y: 0 }); const grabOffset = useRef({ x: 0, y: 0 }); const lastPointer = useRef({ x: 0, y: 0 }); const swapLocked = useRef(false); const recent = entries.slice(0, 2); const quoteIndex = quoteOrder[quotePosition] ?? 0;
-  useEffect(() => { const timer = window.setTimeout(() => setQuoteOrder((current) => { const next = [...current]; for (let index = next.length - 1; index > 0; index -= 1) { const swap = Math.floor(Math.random() * (index + 1)); [next[index], next[swap]] = [next[swap], next[index]]; } return next; }), 0); return () => window.clearTimeout(timer); }, []);
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      const currentDay = displayDay(Date.now());
+      let order = shuffledQuoteOrder();
+      let position = dailyQuotePosition(currentDay);
+      try {
+        const raw = localStorage.getItem(quoteRotationKey);
+        const saved = raw ? JSON.parse(raw) as StoredQuoteRotation : null;
+        if (saved?.signature === quoteListSignature && validQuoteOrder(saved.order)) {
+          order = saved.order;
+          if (saved.day === currentDay && Number.isInteger(saved.position) && saved.position >= 0 && saved.position < dailyQuotes.length) position = saved.position;
+        }
+      } catch { /* start a fresh rotation when storage is unavailable or invalid */ }
+      setQuoteOrder(order); setQuotePosition(position); setQuoteDay(currentDay); setQuoteReady(true);
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, []);
+  useEffect(() => {
+    if (!quoteReady) return;
+    try { localStorage.setItem(quoteRotationKey, JSON.stringify({ signature: quoteListSignature, order: quoteOrder, day: quoteDay, position: quotePosition } satisfies StoredQuoteRotation)); } catch { /* quote rotation can remain in memory */ }
+  }, [quoteReady, quoteOrder, quoteDay, quotePosition]);
+  useEffect(() => {
+    if (!quoteReady) return;
+    const updateDay = () => { const currentDay = displayDay(Date.now()); if (currentDay !== quoteDay) { setQuoteDay(currentDay); setQuotePosition(dailyQuotePosition(currentDay)); } };
+    const timer = window.setInterval(updateDay, 60000); return () => window.clearInterval(timer);
+  }, [quoteReady, quoteDay]);
   const cancelHold = () => { if (holdTimer.current) window.clearTimeout(holdTimer.current); holdTimer.current = null; };
   const widgetNode = (id: DashboardWidgetId) => dashboardRef.current?.querySelector<HTMLElement>(`[data-dashboard-widget="${id}"]`) ?? null;
   const positionDragged = (clientX: number, clientY: number) => { const id = draggingRef.current; if (!id) return; const node = widgetNode(id); if (!node) return; const rect = node.getBoundingClientRect(); const baseLeft = rect.left - dragOffset.current.x; const baseTop = rect.top - dragOffset.current.y; const next = { x: clientX - grabOffset.current.x - baseLeft, y: clientY - grabOffset.current.y - baseTop }; dragOffset.current = next; node.style.setProperty("--drag-x", `${next.x}px`); node.style.setProperty("--drag-y", `${next.y}px`); };
@@ -332,15 +416,15 @@ function SaveTimerModal({ initial, onClose, onSave }: { initial?: TimerPreset; o
   const [generatedId] = useState(() => Date.now());
   const starting = initial ?? { id: generatedId, name: "New practice", seconds: 600, color: "sage" as const, startGong: gongNames[0], endGong: gongNames[0], gongs: [] };
   const [name, setName] = useState(starting.name); const [hours, setHours] = useState(Math.floor(starting.seconds / 3600)); const [minutes, setMinutes] = useState(Math.floor(starting.seconds % 3600 / 60)); const [seconds, setSeconds] = useState(starting.seconds % 60);
-  const [startGong, setStartGong] = useState(starting.startGong ?? gongNames[0]); const [endGong, setEndGong] = useState(starting.endGong ?? gongNames[0]); const [intervalEnabled, setIntervalEnabled] = useState(Boolean(starting.interval)); const [intervalMins, setIntervalMins] = useState(Math.max(1, Math.round((starting.interval ?? 300) / 60)));
-  const [intervalGong, setIntervalGong] = useState(starting.intervalGong ?? "Soft woodblock"); const [customGongs, setCustomGongs] = useState((starting.gongs ?? []).map((gong, index) => ({ minutes: Math.round(gong / 60), sound: starting.gongSounds?.[index] ?? "Soft woodblock" }))); const [color, setColor] = useState<TimerPreset["color"]>(starting.color);
+  const [startGong, setStartGong] = useState(normalizedGongName(starting.startGong)); const [endGong, setEndGong] = useState(normalizedGongName(starting.endGong)); const [intervalEnabled, setIntervalEnabled] = useState(Boolean(starting.interval)); const [intervalMins, setIntervalMins] = useState(Math.max(1, Math.round((starting.interval ?? 300) / 60)));
+  const [intervalGong, setIntervalGong] = useState(normalizedGongName(starting.intervalGong ?? gongNames[2])); const [customGongs, setCustomGongs] = useState((starting.gongs ?? []).map((gong, index) => ({ minutes: Math.round(gong / 60), sound: normalizedGongName(starting.gongSounds?.[index] ?? gongNames[2]) }))); const [color, setColor] = useState<TimerPreset["color"]>(starting.color);
   const save = () => { const validGongs = customGongs.filter((gong) => gong.minutes > 0); onSave({ id: starting.id, name: name.trim() || "Untitled timer", seconds: Math.max(5, hours * 3600 + minutes * 60 + seconds), color, startGong, endGong, interval: intervalEnabled ? intervalMins * 60 : undefined, intervalGong, gongs: validGongs.map((gong) => gong.minutes * 60), gongSounds: validGongs.map((gong) => gong.sound) }); };
   return <div className="modal-backdrop" onPointerDown={(event) => dismissBackdrop(event, onClose)}><section className="builder-modal" role="dialog" aria-modal="true"><header className="modal-header"><div><p className="eyebrow">{initial ? "Edit saved timer" : "Save a timer"}</p><h2>Build your rhythm</h2></div><button className="close-button" onClick={onClose}>×</button></header>
     <label className="builder-name">Timer name<input value={name} onChange={(event) => setName(event.target.value)} /></label>
     <div className="time-picker"><label><input type="number" min="0" max="12" value={hours} onChange={(event) => setHours(Number(event.target.value))} /><span>hours</span></label><b>:</b><label><input type="number" min="0" max="59" value={minutes} onChange={(event) => setMinutes(Number(event.target.value))} /><span>minutes</span></label><b>:</b><label><input type="number" min="0" max="59" value={seconds} onChange={(event) => setSeconds(Number(event.target.value))} /><span>seconds</span></label></div>
     <div className="builder-section sound-structure"><p className="eyebrow">Sound & structure</p><label className="structure-option"><span><i className="setting-icon">◎</i><b>Opening gong</b></span><select value={startGong} onChange={(event) => { setStartGong(event.target.value); tone(event.target.value); }}>{gongNames.map((gong) => <option key={gong}>{gong}</option>)}</select></label><label className="structure-option"><span><i className="setting-icon">◎</i><b>Closing gong</b></span><select value={endGong} onChange={(event) => { setEndGong(event.target.value); tone(event.target.value); }}>{gongNames.map((gong) => <option key={gong}>{gong}</option>)}</select></label>
       <div className="structure-option repeat-option"><span><i className="setting-icon">↻</i><b>Repeating gong</b><small>{intervalEnabled ? `Every ${intervalMins} minutes` : "Off"}</small></span><label className="toggle"><input aria-label="Enable repeating gong" type="checkbox" checked={intervalEnabled} onChange={(event) => setIntervalEnabled(event.target.checked)} /><span /></label></div>{intervalEnabled && <div className="repeat-controls"><label>Every <input aria-label="Repeating gong minutes" type="number" min="1" max="120" value={intervalMins} onChange={(event) => setIntervalMins(Math.min(120, Math.max(1, Number(event.target.value))))} /> minutes</label><label>Sound<select value={intervalGong} onChange={(event) => { setIntervalGong(event.target.value); tone(event.target.value); }}>{gongNames.map((gong) => <option key={gong}>{gong}</option>)}</select></label><label className="repeat-slider">Interval<input className="gong-range" type="range" min="1" max="120" value={intervalMins} onChange={(event) => setIntervalMins(Number(event.target.value))} /></label></div>}
-      <div className="manual-gongs"><div className="manual-gongs-title"><span><i className="setting-icon">＋</i><b>Custom gongs</b></span><button className="add-inline" onClick={() => setCustomGongs([...customGongs, { minutes: Math.max(1, Math.round((minutes || 10) / 2)), sound: "Soft woodblock" }])}>＋ Add</button></div>{customGongs.map((gong, index) => <div className="custom-gong-row sound-row" key={index}><input aria-label={`Gong ${index + 1} minute`} type="number" min="1" value={gong.minutes} onChange={(event) => setCustomGongs(customGongs.map((item, itemIndex) => itemIndex === index ? { ...item, minutes: Number(event.target.value) } : item))} /><span>min</span><select aria-label={`Gong ${index + 1} sound`} value={gong.sound} onChange={(event) => { setCustomGongs(customGongs.map((item, itemIndex) => itemIndex === index ? { ...item, sound: event.target.value } : item)); tone(event.target.value); }}>{gongNames.map((sound) => <option key={sound}>{sound}</option>)}</select><button aria-label={`Remove gong ${index + 1}`} onClick={() => setCustomGongs(customGongs.filter((_, itemIndex) => itemIndex !== index))}>×</button></div>)}</div>
+      <div className="manual-gongs"><div className="manual-gongs-title"><span><i className="setting-icon">＋</i><b>Custom gongs</b></span><button className="add-inline" onClick={() => setCustomGongs([...customGongs, { minutes: Math.max(1, Math.round((minutes || 10) / 2)), sound: gongNames[2] }])}>＋ Add</button></div>{customGongs.map((gong, index) => <div className="custom-gong-row sound-row" key={index}><input aria-label={`Gong ${index + 1} minute`} type="number" min="1" value={gong.minutes} onChange={(event) => setCustomGongs(customGongs.map((item, itemIndex) => itemIndex === index ? { ...item, minutes: Number(event.target.value) } : item))} /><span>min</span><select aria-label={`Gong ${index + 1} sound`} value={gong.sound} onChange={(event) => { setCustomGongs(customGongs.map((item, itemIndex) => itemIndex === index ? { ...item, sound: event.target.value } : item)); tone(event.target.value); }}>{gongNames.map((sound) => <option key={sound}>{sound}</option>)}</select><button aria-label={`Remove gong ${index + 1}`} onClick={() => setCustomGongs(customGongs.filter((_, itemIndex) => itemIndex !== index))}>×</button></div>)}</div>
     </div>
     <div className="color-picker"><span>Timer color</span>{(["sage", "gold", "coral"] as const).map((item) => <button aria-label={item} className={`${item} ${color === item ? "active" : ""}`} onClick={() => setColor(item)} key={item} />)}</div>
     <footer className="modal-footer"><button className="text-button" onClick={onClose}>Cancel</button><button className="primary-button modal-save" onClick={() => { save(); onClose(); }}><span>Save timer</span><span>→</span></button></footer>
@@ -348,9 +432,10 @@ function SaveTimerModal({ initial, onClose, onSave }: { initial?: TimerPreset; o
 }
 
 function PracticeScreen({ timers, setTimers, openReflection, notify }: { timers: TimerPreset[]; setTimers: React.Dispatch<React.SetStateAction<TimerPreset[]>>; openReflection: (request: ReflectionRequest) => void; notify: (message: string) => void }) {
+  const now = useStableNow();
   const [mode, setMode] = useState<PracticeMode>("Timer"); const [duration, setDuration] = useState(600); const [remaining, setRemaining] = useState(600); const [running, setRunning] = useState(false); const [elapsed, setElapsed] = useState(0);
-  const [gongMenu, setGongMenu] = useState<"opening" | "closing" | null>(null); const [openingGong, setOpeningGong] = useState(gongNames[0]); const [closingGong, setClosingGong] = useState(gongNames[0]); const [intervalEnabled, setIntervalEnabled] = useState(true); const [intervalMinutes, setIntervalMinutes] = useState(5); const [intervalGong, setIntervalGong] = useState("Soft woodblock"); const [customGongs, setCustomGongs] = useState([3, 8]); const [customGongSounds, setCustomGongSounds] = useState(["Soft woodblock", "Gentle bell"]);
-  const [editingGongs, setEditingGongs] = useState(false); const [builder, setBuilder] = useState<TimerPreset | "new" | null>(null); const [presetMenu, setPresetMenu] = useState<number | null>(null); const [draftId] = useState(() => Date.now()); const [customDurationOpen, setCustomDurationOpen] = useState(false); const [customHours, setCustomHours] = useState(0); const [customMinutes, setCustomMinutes] = useState(15); const [customSeconds, setCustomSeconds] = useState(0); const lastGong = useRef(-1); const deadline = useRef<number | null>(null); const stopwatchStartedAt = useRef<number | null>(null); const restored = useRef(false);
+  const [gongMenu, setGongMenu] = useState<"opening" | "closing" | null>(null); const [openingGong, setOpeningGong] = useState(gongNames[0]); const [closingGong, setClosingGong] = useState(gongNames[0]); const [intervalEnabled, setIntervalEnabled] = useState(true); const [intervalMinutes, setIntervalMinutes] = useState(5); const [intervalGong, setIntervalGong] = useState(gongNames[2]); const [customGongs, setCustomGongs] = useState([3, 8]); const [customGongSounds, setCustomGongSounds] = useState([gongNames[2], gongNames[3]]);
+  const [editingGongs, setEditingGongs] = useState(false); const [builder, setBuilder] = useState<TimerPreset | "new" | null>(null); const [presetMenu, setPresetMenu] = useState<number | null>(null); const draftId = now; const [customDurationOpen, setCustomDurationOpen] = useState(false); const [customHours, setCustomHours] = useState(0); const [customMinutes, setCustomMinutes] = useState(15); const [customSeconds, setCustomSeconds] = useState(0); const lastGong = useRef(-1); const deadline = useRef<number | null>(null); const stopwatchStartedAt = useRef<number | null>(null); const restored = useRef(false);
   const previousMode = useRef<"Timer" | "Stopwatch">("Timer");
   const clearStoredPractice = () => { try { localStorage.removeItem(activePracticeKey); } catch { /* local storage can be unavailable */ } };
   const storePractice = useCallback((record: StoredPractice) => { try { localStorage.setItem(activePracticeKey, JSON.stringify(record)); } catch { /* local storage can be unavailable */ } }, []);
@@ -364,7 +449,7 @@ function PracticeScreen({ timers, setTimers, openReflection, notify }: { timers:
     try {
       const raw = localStorage.getItem(activePracticeKey); if (!raw) return; const saved = JSON.parse(raw) as StoredPractice;
       const restoreTimer = window.setTimeout(() => {
-        setMode(saved.mode); setDuration(saved.duration); setOpeningGong(saved.openingGong); setClosingGong(saved.closingGong); setIntervalEnabled(saved.intervalEnabled); setIntervalMinutes(saved.intervalMinutes); setIntervalGong(saved.intervalGong ?? "Soft woodblock"); setCustomGongs(saved.customGongs); setCustomGongSounds(saved.customGongSounds ?? saved.customGongs.map(() => "Soft woodblock"));
+        setMode(saved.mode); setDuration(saved.duration); setOpeningGong(normalizedGongName(saved.openingGong)); setClosingGong(normalizedGongName(saved.closingGong)); setIntervalEnabled(saved.intervalEnabled); setIntervalMinutes(saved.intervalMinutes); setIntervalGong(normalizedGongName(saved.intervalGong ?? gongNames[2])); setCustomGongs(saved.customGongs); setCustomGongSounds((saved.customGongSounds ?? saved.customGongs.map(() => gongNames[2])).map(normalizedGongName));
         if (saved.mode === "Timer" && saved.endAt) { const next = Math.max(0, Math.ceil((saved.endAt - Date.now()) / 1000)); setRemaining(next); if (next > 0) { deadline.current = saved.endAt; lastGong.current = saved.duration - next; setRunning(true); } else { clearStoredPractice(); notify("Your timer finished while you were away"); openReflection({ duration: Math.max(1, Math.round(saved.duration / 60)), type: "Meditation" }); } }
         if (saved.mode === "Stopwatch" && saved.startedAt) { stopwatchStartedAt.current = saved.startedAt; setElapsed(Math.max(0, Math.floor((Date.now() - saved.startedAt) / 1000))); setRunning(true); }
       }, 0);
@@ -377,7 +462,7 @@ function PracticeScreen({ timers, setTimers, openReflection, notify }: { timers:
       if (mode === "Stopwatch") { if (stopwatchStartedAt.current) setElapsed(Math.max(0, Math.floor((Date.now() - stopwatchStartedAt.current) / 1000))); return; }
       if (!deadline.current) return; const next = Math.max(0, Math.ceil((deadline.current - Date.now()) / 1000)); const practiced = duration - next;
       const intervalSeconds = Math.max(1, intervalMinutes) * 60; const crossedInterval = intervalEnabled && Math.floor(practiced / intervalSeconds) > Math.floor(Math.max(0, lastGong.current) / intervalSeconds); const customIndex = customGongs.findIndex((gong) => gong * 60 > lastGong.current && gong * 60 <= practiced);
-      if (practiced > 0 && practiced < duration && customIndex >= 0) tone(customGongSounds[customIndex] ?? "Soft woodblock"); else if (practiced > 0 && practiced < duration && crossedInterval) tone(intervalGong); lastGong.current = practiced; setRemaining(next); if (next === 0) completeTimer();
+      if (practiced > 0 && practiced < duration && customIndex >= 0) tone(customGongSounds[customIndex] ?? gongNames[2]); else if (practiced > 0 && practiced < duration && crossedInterval) tone(intervalGong); lastGong.current = practiced; setRemaining(next); if (next === 0) completeTimer();
     };
     update(); const timer = window.setInterval(update, 500); document.addEventListener("visibilitychange", update); window.addEventListener("pageshow", update);
     return () => { window.clearInterval(timer); document.removeEventListener("visibilitychange", update); window.removeEventListener("pageshow", update); };
@@ -385,7 +470,7 @@ function PracticeScreen({ timers, setTimers, openReflection, notify }: { timers:
   useEffect(() => { if (presetMenu === null) return; const closeMenu = (event: PointerEvent) => { if (!(event.target as Element).closest(".timer-more,.timer-card-menu")) setPresetMenu(null); }; document.addEventListener("pointerdown", closeMenu); return () => document.removeEventListener("pointerdown", closeMenu); }, [presetMenu]);
   const chooseDuration = (seconds: number) => { setDuration(seconds); setRemaining(seconds); setRunning(false); deadline.current = null; clearStoredPractice(); lastGong.current = -1; };
   const switchPracticeMode = (nextMode: "Timer" | "Stopwatch") => { previousMode.current = nextMode; setMode(nextMode); setRunning(false); deadline.current = null; stopwatchStartedAt.current = null; clearStoredPractice(); };
-  const choosePreset = (preset: TimerPreset) => { chooseDuration(preset.seconds); setOpeningGong(preset.startGong ?? gongNames[0]); setClosingGong(preset.endGong ?? gongNames[0]); setIntervalEnabled(Boolean(preset.interval)); setIntervalMinutes(Math.max(1, Math.round((preset.interval ?? 300) / 60))); setIntervalGong(preset.intervalGong ?? "Soft woodblock"); setCustomGongs((preset.gongs ?? []).map((gong) => Math.round(gong / 60))); setCustomGongSounds((preset.gongs ?? []).map((_, index) => preset.gongSounds?.[index] ?? "Soft woodblock")); setMode("Timer"); };
+  const choosePreset = (preset: TimerPreset) => { chooseDuration(preset.seconds); setOpeningGong(normalizedGongName(preset.startGong)); setClosingGong(normalizedGongName(preset.endGong)); setIntervalEnabled(Boolean(preset.interval)); setIntervalMinutes(Math.max(1, Math.round((preset.interval ?? 300) / 60))); setIntervalGong(normalizedGongName(preset.intervalGong ?? gongNames[2])); setCustomGongs((preset.gongs ?? []).map((gong) => Math.round(gong / 60))); setCustomGongSounds((preset.gongs ?? []).map((_, index) => normalizedGongName(preset.gongSounds?.[index] ?? gongNames[2]))); setMode("Timer"); };
   const savePreset = (preset: TimerPreset) => { setTimers((current) => current.some((item) => item.id === preset.id) ? current.map((item) => item.id === preset.id ? preset : item) : [...current, preset]); notify("Timer saved"); };
   const toggleRunning = () => {
     if (running) { if (mode === "Timer" && deadline.current) setRemaining(Math.max(0, Math.ceil((deadline.current - Date.now()) / 1000))); if (mode === "Stopwatch" && stopwatchStartedAt.current) setElapsed(Math.max(0, Math.floor((Date.now() - stopwatchStartedAt.current) / 1000))); setRunning(false); deadline.current = null; stopwatchStartedAt.current = null; clearStoredPractice(); return; }
@@ -401,7 +486,7 @@ function PracticeScreen({ timers, setTimers, openReflection, notify }: { timers:
       <aside className="timer-settings card"><div className="card-heading"><div><p className="eyebrow">Sound & structure</p><h2>Gongs</h2></div><button className="sound-button" onClick={() => tone(openingGong)}>♪ Try</button></div>
         {(["opening", "closing"] as const).map((kind) => { const value = kind === "opening" ? openingGong : closingGong; return <div className="gong-setting" key={kind}><button className="setting-row" onClick={() => setGongMenu(gongMenu === kind ? null : kind)}><span><i className="setting-icon">◎</i><b>{kind === "opening" ? "Opening gong" : "Closing gong"}</b><small>{value}</small></span><em>⌄</em></button>{gongMenu === kind && <div className="gong-options">{gongNames.map((gong) => <button className={gong === value ? "selected" : ""} key={gong} onClick={() => { if (kind === "opening") setOpeningGong(gong); else setClosingGong(gong); setGongMenu(null); tone(gong); }}>{gong}{gong === value && <span>✓</span>}</button>)}</div>}</div>; })}
         <div className="setting-row"><span><i className="setting-icon">↻</i><b>Repeating gong</b><small>{intervalEnabled ? `Every ${intervalMinutes} minutes · ${intervalGong}` : "Off"}</small></span><label className="toggle"><input aria-label="Enable repeating gong" type="checkbox" checked={intervalEnabled} onChange={(event) => setIntervalEnabled(event.target.checked)} /><span /></label></div>{intervalEnabled && <div className="inline-repeat-editor"><label className="repeat-live-time"><span>Every</span><input className="gong-range" type="range" min="1" max="120" value={intervalMinutes} onChange={(event) => setIntervalMinutes(Number(event.target.value))} /><span className="gong-minute-field"><input className="gong-minute-input" aria-label="Repeating gong minutes" type="number" min="1" max="120" value={intervalMinutes} onChange={(event) => setIntervalMinutes(Math.min(120, Math.max(1, Number(event.target.value))))} /> min</span></label><label>Sound<select value={intervalGong} onChange={(event) => { setIntervalGong(event.target.value); tone(event.target.value); }}>{gongNames.map((gong) => <option key={gong}>{gong}</option>)}</select></label></div>}
-        <button className="setting-row" onClick={() => setEditingGongs(!editingGongs)}><span><i className="setting-icon">＋</i><b>Custom gongs</b><small>{customGongs.length ? `At ${customGongs.join(", ")} minutes` : "None"}</small></span><em>{editingGongs ? "⌃" : "Edit"}</em></button>{editingGongs && <div className="inline-gong-editor">{customGongs.map((gong, index) => <div className="sound-row" key={index}><input aria-label={`Gong ${index + 1} minute`} type="number" min="1" value={gong} onChange={(event) => setCustomGongs(customGongs.map((item, itemIndex) => itemIndex === index ? Number(event.target.value) : item))} /><span>min</span><select aria-label={`Gong ${index + 1} sound`} value={customGongSounds[index] ?? "Soft woodblock"} onChange={(event) => { setCustomGongSounds(customGongSounds.map((item, itemIndex) => itemIndex === index ? event.target.value : item)); tone(event.target.value); }}>{gongNames.map((sound) => <option key={sound}>{sound}</option>)}</select><button onClick={() => { setCustomGongs(customGongs.filter((_, itemIndex) => itemIndex !== index)); setCustomGongSounds(customGongSounds.filter((_, itemIndex) => itemIndex !== index)); }}>×</button></div>)}<button onClick={() => { setCustomGongs([...customGongs, Math.max(1, Math.round(duration / 120))]); setCustomGongSounds([...customGongSounds, "Soft woodblock"]); }}>＋ Add gong</button></div>}
+        <button className="setting-row" onClick={() => setEditingGongs(!editingGongs)}><span><i className="setting-icon">＋</i><b>Custom gongs</b><small>{customGongs.length ? `At ${customGongs.join(", ")} minutes` : "None"}</small></span><em>{editingGongs ? "⌃" : "Edit"}</em></button>{editingGongs && <div className="inline-gong-editor">{customGongs.map((gong, index) => <div className="sound-row" key={index}><input aria-label={`Gong ${index + 1} minute`} type="number" min="1" value={gong} onChange={(event) => setCustomGongs(customGongs.map((item, itemIndex) => itemIndex === index ? Number(event.target.value) : item))} /><span>min</span><select aria-label={`Gong ${index + 1} sound`} value={customGongSounds[index] ?? gongNames[2]} onChange={(event) => { setCustomGongSounds(customGongSounds.map((item, itemIndex) => itemIndex === index ? event.target.value : item)); tone(event.target.value); }}>{gongNames.map((sound) => <option key={sound}>{sound}</option>)}</select><button onClick={() => { setCustomGongs(customGongs.filter((_, itemIndex) => itemIndex !== index)); setCustomGongSounds(customGongSounds.filter((_, itemIndex) => itemIndex !== index)); }}>×</button></div>)}<button onClick={() => { setCustomGongs([...customGongs, Math.max(1, Math.round(duration / 120))]); setCustomGongSounds([...customGongSounds, gongNames[2]]); }}>＋ Add gong</button></div>}
         <p className="setting-note">Your timer stays accurate through screen lock, app navigation, and reopening. Completion sound and notifications depend on your device and browser permissions.</p>
       </aside></div>}
     {builder && <SaveTimerModal initial={builder === "new" ? undefined : builder} onClose={() => setBuilder(null)} onSave={savePreset} />}
@@ -483,7 +568,7 @@ function JournalScreen({ entries, activities, cycleLog, addEntry, updateEntry, d
 
 function entryTimestamp(entry: JournalEntry, now: number) {
   if (entry.loggedAt) return entry.loggedAt; if (entry.id >= 1e12) return entry.id; if (entry.date.startsWith("Today")) return now; const match = entry.date.match(/^(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+(\d{1,2})/); if (!match) return entry.id;
-  const reference = new Date(now); let parsed = new Date(`${match[1]} ${match[2]}, ${reference.getFullYear()} 12:00:00`).getTime(); if (parsed > now + 86400000) parsed = new Date(`${match[1]} ${match[2]}, ${reference.getFullYear() - 1} 12:00:00`).getTime(); return parsed;
+  const referenceParts = Object.fromEntries(displayDateParts.formatToParts(now).map((part) => [part.type, part.value])); const referenceYear = Number(referenceParts.year); const month = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"].indexOf(match[1]); let parsed = Date.UTC(referenceYear, month, Number(match[2]), 12); if (parsed > now + MILLISECONDS_PER_DAY) parsed = Date.UTC(referenceYear - 1, month, Number(match[2]), 12); return parsed;
 }
 function journalContexts(entry: JournalEntry, cycleLog: CycleLog, now: number) { const at = new Date(entryTimestamp(entry, now)); const moon = lunarPhase(at); const cycle = cycleSummary(cycleLog, at); return { lunar: entry.lunarContext ?? `${moon.name} · ${moon.illumination}%`, cycle: entry.cycleContext ?? `${cycle.phase} · day ${cycle.day}` }; }
 function rangeCutoff(range: string, now: number) { const days = range === "7d" ? 7 : range === "30d" ? 30 : range === "90d" ? 90 : range === "1yr" ? 365 : 0; return days ? now - days * 86400000 : 0; }
@@ -516,7 +601,7 @@ function AssessmentPatternChart({ entries, items, range = "All" }: { entries: Jo
 }
 
 function AnalyticsModal({ widget, entries, cycleLog, onClose }: { widget: InsightWidgetId; entries: JournalEntry[]; cycleLog: CycleLog; onClose: () => void }) {
-  const now = useStableNow(); const [range, setRange] = useState("90d"); const title = widgetMeta[widget].title; const ranges = ["7d", "30d", "90d", "1yr", "All"]; const patternId = (["factors", "faculties", "characteristics", "hindrances"] as InsightWidgetId[]).includes(widget) ? widget as PatternWidgetId : null; const pattern = patternId ? patternWidgetData[patternId] : null; const history = pattern ? assessmentHistory(entries, pattern.items, range, now) : []; const latest = history.at(-1); const previous = history.at(-2); const activityType = insightActivityType(widget); const activityEntries = activityType ? activityHistory(entries, activityType, range, now) : []; const activityMinutes = activityEntries.reduce((sum, entry) => sum + (entry.duration ?? 0), 0); const activityAverage = activityEntries.length ? Math.round(activityMinutes / activityEntries.length) : 0; const activityLongest = Math.max(0, ...activityEntries.map((entry) => entry.duration ?? 0)); const cutoff = rangeCutoff(range, now); const practiceEntries = entries.filter((entry) => practiceActivityTypes.includes(entry.type as PracticeActivityType) && (!cutoff || entryTimestamp(entry, now) >= cutoff)); const practiceMinutes = practiceEntries.reduce((sum, entry) => sum + (entry.duration ?? 0), 0); const cycleHistory = (cycleLog.history ?? []).filter((item) => !cutoff || new Date(`${item.date}T12:00:00`).getTime() >= cutoff); const latestCycle = cycleHistory.at(-1); const cycleInsights = deriveCycleInsights(cycleHistory);
+  const now = useStableNow(); const [range, setRange] = useState("90d"); const title = widgetMeta[widget].title; const ranges = ["7d", "30d", "90d", "1yr", "All"]; const patternId = (["factors", "faculties", "characteristics", "hindrances"] as InsightWidgetId[]).includes(widget) ? widget as PatternWidgetId : null; const pattern = patternId ? patternWidgetData[patternId] : null; const history = pattern ? assessmentHistory(entries, pattern.items, range, now) : []; const latest = history.at(-1); const previous = history.at(-2); const activityType = insightActivityType(widget); const activityEntries = activityType ? activityHistory(entries, activityType, range, now) : []; const activityMinutes = activityEntries.reduce((sum, entry) => sum + (entry.duration ?? 0), 0); const activityAverage = activityEntries.length ? Math.round(activityMinutes / activityEntries.length) : 0; const activityLongest = Math.max(0, ...activityEntries.map((entry) => entry.duration ?? 0)); const cutoff = rangeCutoff(range, now); const practiceEntries = entries.filter((entry) => practiceActivityTypes.includes(entry.type as PracticeActivityType) && (!cutoff || entryTimestamp(entry, now) >= cutoff)); const practiceMinutes = practiceEntries.reduce((sum, entry) => sum + (entry.duration ?? 0), 0); const cycleHistory = (cycleLog.history ?? []).filter((item) => !cutoff || dateOnlyTimestamp(item.date) >= cutoff); const latestCycle = cycleHistory.at(-1); const cycleInsights = deriveCycleInsights(cycleHistory);
   const count = pattern ? history.length : activityType ? activityEntries.length : widget === "cycle" || widget === "body" ? cycleHistory.length : practiceEntries.length;
   return <div className="modal-backdrop" onPointerDown={(event) => dismissBackdrop(event, onClose)}><section className={`analytics-modal ${widget === "cycle" || widget === "body" ? "cycle-analytics" : ""}`}><header className="modal-header"><div><p className="eyebrow">Expanded analytics</p><h2>{title}</h2></div><button className="close-button" onClick={onClose}>×</button></header><div className="range-tabs" style={{ "--range-offset": `${ranges.indexOf(range) * 100}%` } as React.CSSProperties}>{ranges.map((item) => <button key={item} className={range === item ? "active" : ""} onClick={() => setRange(item)}>{item}</button>)}</div><div className="analytics-hero"><div><span>Entries in view</span><strong>{count}</strong><small>{range} window</small></div>{pattern ? <AssessmentPatternChart entries={entries} items={pattern.items} range={range} /> : activityType ? <ActivityHistoryChart entries={entries} type={activityType} range={range} /> : widget === "cycle" || widget === "body" ? <CycleTrackingChart history={cycleHistory} /> : <PracticeRhythmChart entries={entries} range={range} />}</div>
     {pattern ? <div className="factor-table">{pattern.items.map((factor, index) => { const value = latest?.assessments?.[factor]?.value; const previousValue = previous?.assessments?.[factor]?.value; const delta = typeof value === "number" && typeof previousValue === "number" ? value - previousValue : null; return <div key={factor}><i style={{ background: patternColors[index % patternColors.length] }} /><span>{assessmentLabel(factor)}</span><b>{typeof value === "number" ? `${value}%` : "—"}</b><em>{delta === null ? "—" : `${delta > 0 ? "+" : delta < 0 ? "−" : ""}${Math.abs(delta)}`}</em></div>; })}</div> : activityType ? <><div className="analytics-callouts"><article><span>Total practice</span><strong>{activityMinutes} min</strong></article><article><span>Average session</span><strong>{activityAverage} min</strong></article><article><span>Longest session</span><strong>{activityLongest} min</strong></article></div><div className="activity-history-list">{activityEntries.slice(-5).reverse().map((entry) => <div key={entry.id}><span><b>{entry.title}</b><small>{entry.date}</small></span><strong>{entry.duration ?? 0} min</strong></div>)}{activityEntries.length === 0 && <p>No {activityType.toLowerCase()} sessions were logged in this range.</p>}</div></> : widget === "cycle" || widget === "body" ? <><div className="analytics-callouts"><article><span>Latest temperature</span><strong>{latestCycle?.temperature ? `${latestCycle.temperature.toFixed(2)}°C` : "—"}</strong></article><article><span>Cervical mucus</span><strong>{latestCycle?.cervicalMucus ?? "—"}</strong></article><article><span>Sleep score</span><strong>{latestCycle?.sleepScore ?? "—"}</strong></article></div><div className="cycle-insight-list"><p><b>Temperature pattern</b>{cycleInsights.coverline ? `${cycleInsights.sustainedShift ? "A sustained rise is visible" : "No sustained rise yet"} · working coverline ${cycleInsights.coverline.toFixed(2)}°C` : "More valid temperature entries are needed for a shift pattern."}</p><p><b>Peak-type mucus</b>{cycleInsights.peakMucus ? `${cycleInsights.peakMucus.cervicalMucus} observed ${cycleInsights.peakMucus.date}` : "No watery or egg-white mucus logged in this range."}</p><p><b>Latest observations</b>{latestCycle ? `${latestCycle.flow} flow · ${latestCycle.ovulationTest} ovulation test · ${latestCycle.symptoms.length ? latestCycle.symptoms.join(", ") : "no symptoms"}` : "No observations in this range."}</p><p><b>Body signals</b>{latestCycle ? `Energy ${latestCycle.energy}% · sex drive ${latestCycle.sexDrive}% · PMS ${latestCycle.pms}%` : "Log a cycle check-in to begin."}</p><p><b>Sleep pattern</b>{cycleInsights.averageSleep ? `${Math.floor(cycleInsights.averageSleep / 60)}h ${cycleInsights.averageSleep % 60}m average · latest score ${latestCycle?.sleepScore ?? "—"}` : "No sleep data logged."}</p><p><b>Common symptoms</b>{cycleInsights.commonSymptoms.length ? cycleInsights.commonSymptoms.join(" · ") : "No repeated symptoms in this range."}</p></div></> : <><div className="analytics-callouts"><article><span>Total practice</span><strong>{practiceMinutes} min</strong></article><article><span>Sessions</span><strong>{practiceEntries.length}</strong></article><article><span>Average session</span><strong>{practiceEntries.length ? Math.round(practiceMinutes / practiceEntries.length) : 0} min</strong></article></div></>}
