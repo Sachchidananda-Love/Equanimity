@@ -43,3 +43,14 @@ ui-debug.log*
 /.wrangler/
 /outputs/
 /work/
+
+# Keep native project/source/assets; regenerate only copied web output/cache.
+/ios/App/App/public/
+/ios/App/App/capacitor.config.json
+/ios/App/App/config.xml
+/ios/DerivedData/
+/ios/build/
+**/xcuserdata/
+**/.swiftpm/
+**/.build/
+*.xcuserstate
