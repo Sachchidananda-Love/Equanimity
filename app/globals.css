@@ -300,6 +300,25 @@ select {
 }
 .practice-chart-card,.factor-card,.activity-stat-card,.book-analytics-card { min-width:0; overflow:hidden; }
 .practice-chart-card .legend,.factor-card .factor-legend { max-width:100%; flex-wrap:wrap; }
+.book-analytics-card > .card-heading > div:first-child > .eyebrow,
+.factor-card > .card-heading > div:first-child > .eyebrow { display:none; }
+.factor-card > .source-caption { display:none; }
+.range-tabs button { min-width:0; white-space:nowrap; font-size:clamp(7px, 2.2vw, 9px); padding-left:2px; padding-right:2px; }
+.practice-total-summary { cursor:pointer; transition:height .2s ease, min-height .2s ease; }
+.practice-total-summary:focus-visible { outline:3px solid rgba(79,116,101,.4); outline-offset:3px; }
+.practice-category-grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:5px; margin-top:auto; }
+.practice-category-grid > span { min-width:0; padding:7px; }
+.practice-category-grid b { display:block; overflow-wrap:anywhere; white-space:normal; font-size:7px; line-height:1.2; }
+.practice-category-grid em { display:block; margin-top:2px; font-size:10px; font-style:normal; }
+.calendar-dot { display:inline-block; width:7px; height:7px; flex:0 0 auto; border-radius:50%; background:var(--sage); }
+.calendar-dot.maintenance-yoga { background:var(--gold); }
+.calendar-dot.workout-yoga { background:var(--coral); }
+.practice-category-grid .calendar-dot { margin:0 4px 1px 0; vertical-align:middle; }
+.practice-breakdown { margin-top:10px; padding-top:9px; border-top:1px solid rgba(255,255,255,.25); }
+.practice-breakdown > p { margin:0 0 6px; font-size:8px; opacity:.78; }
+.practice-breakdown > div { display:grid; gap:5px; }
+.practice-breakdown > div > span { display:grid; grid-template-columns:10px 1fr auto; align-items:center; gap:5px; font-size:9px; }
+.practice-breakdown strong { font-size:10px; font-weight:600; }
 section[aria-live="polite"] { display:none; }
 .account-data-panel { margin-top:0; padding-top:0; }
 .account-data-panel details { margin-top:0; }
@@ -325,5 +344,8 @@ section[aria-live="polite"] { display:none; }
   .assessment-chart canvas,.practice-rhythm-chart,.activity-history-chart { max-width:100%; }
   .cycle-tracking-chart svg { max-width:100%; overflow:hidden; }
   .duration-chips:has(+ .custom-duration) button.active:not(:last-child) { background:transparent; border-color:var(--line); color:var(--muted); }
+  .range-tabs button { font-size:8px; padding:7px 1px; letter-spacing:-.02em; }
+  .practice-total-summary.expanded { height:auto; min-height:260px; }
+  .practice-total-summary.expanded .practice-category-grid { margin-top:8px; }
 }
 .journal-month + .journal-month .month-marker { margin-top:32px; }
