@@ -457,6 +457,17 @@ function TodayScreen({ setActive, entries, cycleLog, onCycleLog, openReflection,
     const updateDay = () => { const currentDay = displayDay(Date.now()); if (currentDay !== quoteDay) { setQuoteDay(currentDay); setQuotePosition(dailyQuotePosition(currentDay)); } };
     const timer = window.setInterval(updateDay, 60000); return () => window.clearInterval(timer);
   }, [quoteReady, quoteDay]);
+  useEffect(() => {
+    if (!editing || !draggingRef.current) return;
+    const onMove = (event: PointerEvent) => {
+      if (!draggingRef.current) return;
+      const edge = 72;
+      if (event.clientY < edge) window.scrollBy({ top: -Math.max(8, (edge - event.clientY) * .35), behavior: "auto" });
+      else if (event.clientY > window.innerHeight - edge) window.scrollBy({ top: Math.max(8, (event.clientY - (window.innerHeight - edge)) * .35), behavior: "auto" });
+    };
+    window.addEventListener("pointermove", onMove, { passive: true });
+    return () => window.removeEventListener("pointermove", onMove);
+  }, [editing, dragging]);
   const cancelHold = () => { if (holdTimer.current) window.clearTimeout(holdTimer.current); holdTimer.current = null; };
   const widgetNode = (id: DashboardWidgetId) => dashboardRef.current?.querySelector<HTMLElement>(`[data-dashboard-widget="${id}"]`) ?? null;
   const positionDragged = (clientX: number, clientY: number) => { const id = draggingRef.current; if (!id) return; const node = widgetNode(id); if (!node) return; const rect = node.getBoundingClientRect(); const baseLeft = rect.left - dragOffset.current.x; const baseTop = rect.top - dragOffset.current.y; const next = { x: clientX - grabOffset.current.x - baseLeft, y: clientY - grabOffset.current.y - baseTop }; dragOffset.current = next; node.style.setProperty("--drag-x", `${next.x}px`); node.style.setProperty("--drag-y", `${next.y}px`); };

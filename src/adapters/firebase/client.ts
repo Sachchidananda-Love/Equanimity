@@ -1,5 +1,5 @@
 import { initializeApp } from "firebase/app";
-import { initializeAuth, inMemoryPersistence, onAuthStateChanged, signInWithEmailAndPassword, signOut, connectAuthEmulator } from "firebase/auth";
+import { initializeAuth, browserLocalPersistence, onAuthStateChanged, signInWithEmailAndPassword, signOut, connectAuthEmulator } from "firebase/auth";
 import { initializeFirestore, memoryLocalCache, getDocFromServer, getDocsFromServer, collection, doc, runTransaction, connectFirestoreEmulator } from "firebase/firestore";
 import type { CloudGateway } from "../../services/cloud-session";
 import { createFirebaseRepository, type FirestorePort } from "./repository";
@@ -8,7 +8,7 @@ import type { FirebaseConfiguration } from "./config";
 export function connectFirebase(configuration: FirebaseConfiguration): CloudGateway {
   if (!configuration.enabled) throw new Error("Firebase is disabled; configure it before signing in");
   const app = initializeApp(configuration.options, "yi-private-cloud");
-  const auth = initializeAuth(app, { persistence: inMemoryPersistence });
+  const auth = initializeAuth(app, { persistence: browserLocalPersistence });
   const db = initializeFirestore(app, { localCache: memoryLocalCache() });
   if (configuration.emulators) {
     connectAuthEmulator(auth, "http://127.0.0.1:9099", { disableWarnings: true });

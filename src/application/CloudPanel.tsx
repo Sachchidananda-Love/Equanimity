@@ -1,17 +1,26 @@
 "use client";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { cloudSession } from "./cloud-runtime";
 import type { CloudSnapshot } from "../services/cloud-session";
 import { browserFirebaseConfiguration } from "../adapters/firebase/config";
 
 export function CloudPanel({ snapshot }: { snapshot: CloudSnapshot }) {
   const [email, setEmail] = useState(""); const [password, setPassword] = useState(""); const [error, setError] = useState("");
+  const [showOnInsights, setShowOnInsights] = useState(true);
+  useEffect(() => {
+    const update = () => setShowOnInsights(document.querySelector(".bottom-nav button.active")?.textContent?.includes("Insights") ?? true);
+    update();
+    const observer = new MutationObserver(update);
+    observer.observe(document.body, { subtree: true, attributes: true, attributeFilter: ["class"] });
+    return () => observer.disconnect();
+  }, []);
+  if (!showOnInsights) return null;
   let configured = false;
   try { configured = browserFirebaseConfiguration().enabled; } catch { /* configuration is reported without exposing values */ }
   const pending = snapshot.save === "pending" || snapshot.auth === "authenticating";
   const canDiscard = () => snapshot.save !== "failed" || window.confirm("Unsaved cloud changes will be discarded from this view. They have not been saved locally. Continue?");
   const status = snapshot.operation === "loading" ? "Loading private cloud data…" : snapshot.operation === "saving" ? "Saving changes to cloud…" : snapshot.save === "synced" ? "Cloud changes saved." : snapshot.save === "failed" ? "Cloud operation failed. Editing is paused." : snapshot.mode === "signed-out" ? "Signed out. Private cloud data is closed." : "Development/fallback mode: saved only on this device.";
-  return <section className="page" aria-label="Account and data source"><details open={snapshot.mode === "signed-out" || snapshot.save === "failed"}><summary>Account & data · {snapshot.mode === "cloud" ? "Private cloud" : snapshot.mode === "signed-out" ? "Sign in" : "Local-only (development/fallback)"}</summary>
+  return <section className="page account-data-panel" aria-label="Account and data source"><details open={snapshot.mode === "signed-out" || snapshot.save === "failed"}><summary>Account & data · {snapshot.mode === "cloud" ? "Private cloud" : snapshot.mode === "signed-out" ? "Sign in" : "Local-only (development/fallback)"}</summary>
     <p role="status">{status} Authentication: {snapshot.auth}.{snapshot.identity && ` Signed in as ${snapshot.identity.email ?? snapshot.identity.uid}.`}</p>
     {!configured && <p>Firebase is disabled or incomplete. Local mode remains available. See the Phase 3A configuration guide.</p>}
     {!snapshot.identity && <form onSubmit={event => { event.preventDefault(); const secret = password; setPassword(""); void cloudSession.signIn(email.trim(), secret); }}>
