@@ -9,4 +9,4 @@ export const cloudSession = createCloudSession(async () => {
   if (!config.enabled) throw new Error("Cloud configuration is disabled");
   const { connectFirebase } = await import("../adapters/firebase/client");
   return connectFirebase(config);
-}, { cloudPrimary });
+}, { cloudPrimary, restoreOnStart: cloudPrimary });

@@ -12,12 +12,13 @@ export interface CloudGateway {
 }
 
 /** No local repository is accepted here: authentication cannot import data. */
-export function createCloudSession(connect: () => Promise<CloudGateway>, { cloudPrimary = false } = {}) {
+export function createCloudSession(connect: () => Promise<CloudGateway>, { cloudPrimary = false, restoreOnStart = false } = {}) {
   const resting = cloudPrimary ? { mode: "signed-out" as const, save: "signed-out" as const } : { mode: "local" as const, save: "local-only" as const };
   let snapshot: CloudSnapshot = { auth: "unauthenticated", identity: null, ...resting, operation: null, error: "", revision: 0 };
   let gateway: CloudGateway | undefined;
   let activeRepository: DataRepository | undefined;
   let generation = 0;
+  let restoring = false;
   const listeners = new Set<() => void>();
   const update = (patch: Partial<CloudSnapshot>) => { snapshot = { ...snapshot, ...patch }; listeners.forEach(listener => listener()); };
   const failure = (error: unknown, loading: boolean) => {
@@ -29,9 +30,11 @@ export function createCloudSession(connect: () => Promise<CloudGateway>, { cloud
     if (!gateway) {
       gateway = await connect();
       gateway.observe(identity => {
+        const wasRestoring = restoring;
+        restoring = false;
         const changed = identity?.uid !== snapshot.identity?.uid;
         if (changed) { generation++; activeRepository = undefined; update({ ...resting, operation: null, error: "", revision: snapshot.revision + 1 }); }
-        update({ identity, auth: identity ? "authenticated" : snapshot.auth === "authenticating" ? "authenticating" : "unauthenticated" });
+        update({ identity, auth: identity ? "authenticated" : wasRestoring ? "unauthenticated" : snapshot.auth === "authenticating" ? "authenticating" : "unauthenticated" });
         if (changed && identity && cloudPrimary) session.selectCloud();
       });
     }
@@ -88,5 +91,10 @@ export function createCloudSession(connect: () => Promise<CloudGateway>, { cloud
       generation++; activeRepository = undefined; update({ mode: "local", save: "local-only", operation: null, error: "", revision: snapshot.revision + 1 });
     },
   };
+  if (restoreOnStart && cloudPrimary) {
+    restoring = true;
+    update({ auth: "authenticating" });
+    void connectOnce().catch(() => { restoring = false; update({ auth: "authentication-error", error: "Could not restore the saved Firebase session. Check your connection and sign in again if needed." }); });
+  }
   return session;
 }
