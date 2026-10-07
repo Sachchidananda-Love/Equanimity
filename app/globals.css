@@ -102,6 +102,9 @@ h3 { font-family:Iowan Old Style,Palatino Linotype,Georgia,serif; font-weight:50
 .customize-modal .modal-intro,.cycle-log-modal .modal-intro { color:var(--muted); font-size:10px; line-height:1.5; }.widget-list>div { display:grid; grid-template-columns:25px 1fr 42px 30px 30px; align-items:center; gap:6px; padding:11px 0; border-bottom:1px solid var(--line); }.drag-handle { color:var(--muted); font-size:17px; }.widget-list b,.widget-list small { display:block; }.widget-list b { font-size:10px; }.widget-list small { margin-top:2px; color:var(--muted); font-size:8px; }.widget-list>div>button { width:28px; height:28px; border:1px solid var(--line); border-radius:7px; background:var(--card); }.widget-list>div>button:disabled { opacity:.25; }
 .analytics-modal { width:min(100%,820px); max-height:94vh; overflow-y:auto; border-radius:28px 28px 0 0; padding:23px 18px calc(20px + env(safe-area-inset-bottom)); background:var(--paper); box-shadow:0 -20px 70px rgba(13,21,17,.25); }.range-tabs { display:flex; padding:4px; border-radius:999px; background:#e3e2db; }.range-tabs button { flex:1; border:0; border-radius:999px; padding:8px; background:transparent; color:var(--muted); font-size:9px; }.range-tabs button.active { background:var(--card); color:var(--ink); }.analytics-hero { display:grid; grid-template-columns:.45fr 1fr; gap:15px; align-items:center; margin:18px 0; padding:17px; border-radius:19px; background:var(--card); }.analytics-hero span,.analytics-hero small { display:block; color:var(--muted); font-size:8px; }.analytics-hero strong { display:block; margin:7px 0; font-family:Iowan Old Style,Georgia,serif; font-size:39px; font-weight:500; }.analytics-hero .factor-lines { margin:0; }.factor-table>div { display:grid; grid-template-columns:8px 1fr 45px 35px; align-items:center; gap:9px; padding:10px 2px; border-bottom:1px solid var(--line); font-size:9px; }.factor-table i { width:8px; height:8px; border-radius:50%; }.factor-table em { color:var(--sage-dark); font-style:normal; }.analytics-big-chart { padding:0 15px 15px; border-radius:20px; background:var(--card); }.analytics-callouts { display:grid; grid-template-columns:repeat(3,1fr); gap:8px; margin-top:9px; }.analytics-callouts article { padding:12px; border-radius:13px; background:var(--card); }.analytics-callouts span,.analytics-callouts strong { display:block; }.analytics-callouts span { color:var(--muted); font-size:7px; }.analytics-callouts strong { margin-top:6px; font-family:Iowan Old Style,Georgia,serif; font-size:16px; font-weight:500; }
 
+/* Expanded practice summary */
+.practice-time-hero { margin:18px 0; padding:22px; border-radius:20px; background:var(--card); }.practice-time-hero span,.practice-time-hero>small { display:block; color:var(--muted); font-size:9px; }.practice-time-hero strong { display:block; margin:8px 0 5px; font-family:Iowan Old Style,Georgia,serif; font-size:48px; font-weight:500; letter-spacing:-.04em; }.practice-time-hero strong small { font-size:18px; }.practice-time-list { display:grid; gap:8px; }.practice-time-list>div { display:flex; align-items:center; justify-content:space-between; gap:14px; padding:18px 16px; border-radius:16px; background:var(--card); }.practice-time-list>div>span { display:flex; align-items:center; gap:10px; font-family:Iowan Old Style,Georgia,serif; font-size:18px; }.practice-time-list .calendar-dot { width:10px; height:10px; }.practice-time-list strong { color:var(--sage-dark); font-size:15px; font-weight:750; }
+
 /* Cycle logging */
 .cycle-log-modal .field-pair { margin:12px 0; }.choice-chips { display:flex; gap:6px; }.choice-chips.wrap { flex-wrap:wrap; }.choice-chips button { border:1px solid var(--line); border-radius:999px; padding:8px 11px; background:transparent; color:var(--muted); font-size:9px; }.choice-chips button.active { background:var(--coral-pale); border-color:var(--coral); color:#8f513f; }
 
@@ -255,7 +258,7 @@ h3 { font-family:Iowan Old Style,Palatino Linotype,Georgia,serif; font-weight:50
 .lunar-card { padding:17px; gap:15px; }
 .lunar-card h2 { margin:3px 0 7px; font-size:19px; }.lunar-card small { margin-top:3px; }
 .practice-total-summary { display:flex; flex-direction:column; padding:17px; border-radius:20px; background:linear-gradient(135deg,#9d7142,#b78950); color:white; overflow:hidden; }
-.practice-total-summary>span { font-size:8px; opacity:.78; }.practice-total-summary>strong { display:block; margin:8px 0 6px; font-family:Iowan Old Style,Georgia,serif; font-size:27px; font-weight:500; }.practice-total-summary>strong small { font-size:12px; }.practice-total-summary>div { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:5px; margin-top:auto; }.practice-total-summary>div>span { min-width:0; padding:7px; }.practice-total-summary b { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:6px; }.practice-total-summary em { margin-top:2px; font-size:10px; }
+.practice-total-summary>span { font-size:8px; opacity:.78; }.practice-total-summary>strong { display:block; margin:8px 0 6px; font-family:Iowan Old Style,Georgia,serif; font-size:clamp(22px,4vw,30px); font-weight:500; letter-spacing:-.03em; white-space:nowrap; }.practice-total-summary>strong small { font-size:12px; }.practice-total-summary>div { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:5px; margin-top:auto; }.practice-total-summary>div>span { min-width:0; padding:7px; }.practice-total-summary b { overflow:hidden; text-overflow:ellipsis; white-space:normal; text-align:center; font-size:clamp(6px,1.8vw,8px); line-height:1.1; }.practice-total-summary em { margin:0; font-size:clamp(9px,2.2vw,11px); line-height:1.1; white-space:nowrap; }
 .moon-orb { width:68px; height:68px; }
 .moon-orb:after { z-index:2; opacity:.97; transform:translateX(var(--moon-shift)); transition:transform .5s ease; }
 .moon-orb.waning:after { transform:translateX(var(--moon-shift)); }
@@ -298,36 +301,30 @@ select {
   background-position:right 12px center!important;
   background-size:10px 7px!important;
 }
-.practice-chart-card,.factor-card,.activity-stat-card,.book-analytics-card { min-width:0; overflow:hidden; }
+.practice-chart-card,.factor-card,.activity-stat-card,.book-analytics-card { min-width:0; overflow:hidden; container-type:inline-size; }
 .practice-chart-card .legend,.factor-card .factor-legend { max-width:100%; flex-wrap:wrap; }
 .book-analytics-card > .card-heading > div:first-child > .eyebrow,
 .factor-card > .card-heading > div:first-child > .eyebrow { display:none; }
 .factor-card > .source-caption { display:none; }
 .range-tabs { display:grid; grid-template-columns:repeat(5,minmax(0,1fr)); gap:1px; }
 .range-tabs button { min-width:0; width:100%; white-space:nowrap; font-size:clamp(8px, 2.2vw, 9px); padding-left:1px; padding-right:1px; }
-.practice-total-summary { cursor:pointer; transition:height .2s ease, min-height .2s ease; }
+@container (max-width: 250px) {
+  .range-tabs { padding:3px; }
+  .range-tabs button { font-size:7px; letter-spacing:-.03em; }
+}
+@container (max-width: 205px) {
+  .range-tabs button { font-size:6.5px; }
+}
+.practice-total-summary { cursor:pointer; border:0; text-align:left; font:inherit; transition:height .2s ease, min-height .2s ease; }
 .practice-total-summary:focus-visible { outline:3px solid rgba(79,116,101,.4); outline-offset:3px; }
 .practice-category-grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:5px; margin-top:auto; }
-.practice-category-grid > span { min-width:0; padding:7px; }
-.practice-category-grid b { display:block; overflow-wrap:anywhere; white-space:normal; font-size:7px; line-height:1.2; }
-.practice-category-grid em { display:block; margin-top:2px; font-size:10px; font-style:normal; }
-.practice-total-summary:not(.expanded) .practice-category-grid b,
-.practice-total-summary:not(.expanded) .practice-category-grid em { display:none; }
-.practice-total-summary:not(.expanded) .practice-category-grid { grid-template-columns:repeat(3,1fr); align-items:center; }
-.practice-total-summary:not(.expanded) .practice-category-grid > span { display:grid; place-items:center; padding:5px; }
-.practice-total-summary:not(.expanded) .practice-category-grid .calendar-dot { width:15px; height:15px; margin:0; }
+.practice-category-grid > span { min-width:0; display:flex; flex-direction:column; align-items:center; justify-content:flex-start; gap:3px; padding:7px 3px; text-align:center; }
+.practice-category-grid b { display:block; overflow-wrap:anywhere; white-space:normal; font-size:clamp(6px,1.8vw,8px); line-height:1.1; }
+.practice-category-grid em { display:block; margin:0; font-size:clamp(9px,2.2vw,11px); font-style:normal; line-height:1.1; white-space:nowrap; }
 .calendar-dot { display:inline-block; width:7px; height:7px; flex:0 0 auto; border-radius:50%; background:var(--sage); }
 .calendar-dot.maintenance-yoga { background:var(--gold); }
 .calendar-dot.workout-yoga { background:var(--coral); }
-.practice-category-grid .calendar-dot { margin:0 4px 1px 0; vertical-align:middle; }
-.practice-breakdown { margin-top:10px; padding-top:9px; border-top:1px solid rgba(255,255,255,.25); }
-.practice-breakdown { display:block!important; }
-.practice-breakdown > p { margin:0 0 6px; font-size:8px; opacity:.78; }
-.practice-breakdown > div { display:grid; gap:5px; }
-.practice-breakdown > div > span { display:grid; grid-template-columns:10px 1fr auto; align-items:center; gap:5px; font-size:9px; }
-.practice-breakdown strong { font-size:10px; font-weight:600; }
-.dashboard-summary-time:has(.practice-total-summary.expanded) { height:auto; min-height:340px; grid-row:span 2; }
-.dashboard-summary-time:has(.practice-total-summary.expanded) > .practice-total-summary { height:auto; min-height:340px; }
+.practice-category-grid .calendar-dot { width:9px; height:9px; margin:0; }
 section[aria-live="polite"] { display:none; }
 .account-data-panel { margin-top:0; padding-top:0; }
 .account-data-panel details { margin-top:0; }
@@ -356,7 +353,5 @@ section[aria-live="polite"] { display:none; }
   .range-tabs { gap:0; }
   .range-tabs button { font-size:8px; padding:7px 0; letter-spacing:-.02em; }
   .factor-card h2 { font-size:22px; }
-  .practice-total-summary.expanded { height:auto; min-height:260px; }
-  .practice-total-summary.expanded .practice-category-grid { margin-top:8px; }
 }
 .journal-month + .journal-month .month-marker { margin-top:32px; }
