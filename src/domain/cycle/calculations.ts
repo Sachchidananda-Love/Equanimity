@@ -1,8 +1,8 @@
 import type { CycleLog, CycleDayLog } from "./types";
 import { dateOnlyDay, displayDay } from "../dates/calendar";
-export function cycleFieldRecorded(record: CycleDayLog | undefined, field: keyof CycleDayLog) {
-  return Boolean(record && (record.recordedFields === undefined || record.recordedFields.includes(field)));
-}
+import { cycleFieldRecorded } from "./observations";
+import { detectSustainedTemperatureShift } from "./fertility";
+export { cycleFieldRecorded } from "./observations";
 
 export function cycleFieldText(record: CycleDayLog | undefined, field: keyof CycleDayLog) {
   if (!record || !cycleFieldRecorded(record, field) || record[field] === undefined) return "Not recorded";
@@ -25,6 +25,10 @@ export function deriveCycleInsights(history: CycleDayLog[]) {
   const mucusHistory = history.filter(record => cycleFieldRecorded(record, "cervicalMucus"));
   const sleepHistory = history.filter(record => cycleFieldRecorded(record, "sleepMinutes"));
   const symptomHistory = history.filter(record => cycleFieldRecorded(record, "symptoms"));
-  const temperatures = temperatureHistory.filter((item) => typeof item.temperature === "number" && !item.questionableTemperature); const baseline = temperatures.slice(-9, -3).map((item) => item.temperature as number); const recent = temperatures.slice(-3).map((item) => item.temperature as number); const coverline = baseline.length ? Math.max(...baseline) + .05 : null; const sustainedShift = coverline !== null && recent.length === 3 && recent.every((temperature) => temperature > coverline); const peakMucus = [...mucusHistory].reverse().find((item) => item.cervicalMucus === "Egg white" || item.cervicalMucus === "Watery"); const sleep = sleepHistory.map((item) => item.sleepMinutes).filter((value): value is number => typeof value === "number"); const symptomCounts = new Map<string, number>(); symptomHistory.forEach((item) => item.symptoms.forEach((symptom) => symptomCounts.set(symptom, (symptomCounts.get(symptom) ?? 0) + 1))); const commonSymptoms = [...symptomCounts.entries()].sort((a, b) => b[1] - a[1]).slice(0, 3).map(([symptom]) => symptom);
+  const latestTemperatureDate = temperatureHistory.map(item => item.date).sort().at(-1);
+  const shift = latestTemperatureDate ? detectSustainedTemperatureShift(temperatureHistory, latestTemperatureDate) : null;
+  const coverline = shift?.threshold ?? null;
+  const sustainedShift = shift !== null;
+  const peakMucus = [...mucusHistory].sort((a, b) => b.date.localeCompare(a.date)).find((item) => item.cervicalMucus === "Egg white" || item.cervicalMucus === "Watery"); const sleep = sleepHistory.map((item) => item.sleepMinutes).filter((value): value is number => typeof value === "number"); const symptomCounts = new Map<string, number>(); symptomHistory.forEach((item) => item.symptoms.forEach((symptom) => symptomCounts.set(symptom, (symptomCounts.get(symptom) ?? 0) + 1))); const commonSymptoms = [...symptomCounts.entries()].sort((a, b) => b[1] - a[1]).slice(0, 3).map(([symptom]) => symptom);
   return { provenance: "app-derived-estimate" as const, coverline, sustainedShift, peakMucus, averageSleep: sleep.length ? Math.round(sleep.reduce((sum, value) => sum + value, 0) / sleep.length) : null, commonSymptoms };
 }

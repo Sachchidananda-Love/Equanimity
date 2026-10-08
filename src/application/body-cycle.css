@@ -89,7 +89,7 @@
 .cycle-chart-hint { margin:10px 0 0; color:var(--muted); font-size:9px; line-height:1.5; }
 .cycle-show-rows { display:flex; align-items:center; gap:7px; margin-top:12px; color:var(--muted); font-size:9px; }
 .cycle-show-rows input { accent-color:var(--sage-dark); }
-.is-compact { --cycle-label-width:68px; --cycle-axis-width:40px; --cycle-plot-height:140px; }
+.is-compact { --cycle-label-width:68px; --cycle-axis-width:40px; --cycle-plot-height:118px; }
 .is-compact .cycle-axis-heading { min-height:43px; font-size:7px; gap:4px; }
 .is-compact .cycle-axis-heading b { font-size:7px; }
 .is-compact .cycle-calendar button { gap:1px; padding:2px 0; font-size:8px; }
@@ -137,6 +137,50 @@
 .cycle-pattern-summary dt { color:var(--muted); font-size:9px; }
 .cycle-pattern-summary dd { margin:8px 0 0; font-size:11px; line-height:1.5; }
 .cycle-pattern-summary small { display:block; margin-top:4px; color:var(--muted); font-size:8px; }
+.cycle-fertility-row { display:grid; grid-template-columns:repeat(var(--cycle-days),minmax(0,1fr)); min-height:28px; border-top:1px solid var(--line); }
+.cycle-fertility-row button { min-width:0; padding:4px 0; border:0; border-right:1px solid var(--cycle-grid-color); color:var(--muted); font-size:9px; font-weight:700; }
+.cycle-fertility-row button.is-selected { box-shadow:inset 0 0 0 1px var(--sage-dark); }
+.cycle-fertility-label { min-height:28px; font-size:8px; }
+.fertility-likely { background:#f1dfd3; color:#8d594b; }
+.fertility-possible { background:#f0ead8; color:#856c37; }
+.fertility-lower { background:#e3e8e7; color:#516966; }
+.fertility-uncertain { background:#eeece6; color:var(--muted); }
+.cycle-fertility-row .fertility-likely { color:#8d594b; }
+.cycle-fertility-row .fertility-possible { color:#856c37; }
+.cycle-fertility-row .fertility-lower { color:#516966; }
+.cycle-fertility-legend { display:flex; flex-wrap:wrap; gap:6px 12px; margin-top:9px; color:var(--muted); font-size:8px; }
+.cycle-fertility-legend span { display:flex; align-items:center; gap:5px; }
+.cycle-fertility-legend i { display:block; width:8px; height:8px; border:1px solid rgba(113,128,120,.15); border-radius:3px; }
+.is-compact .cycle-fertility-row,.is-compact .cycle-fertility-label { min-height:22px; }
+.is-compact .cycle-fertility-row button { padding:3px 0; font-size:7px; }
+.is-compact .cycle-fertility-label { padding:3px 5px; font-size:6px; }
+.body-cycle-card-summary>span>small { margin-top:4px; font-size:7px; color:var(--muted); }
+.cycle-fertility-panel { margin:16px 0; padding:19px; border:1px solid var(--line); border-radius:20px; background:var(--card); }
+.cycle-fertility-panel>header { display:flex; align-items:center; justify-content:space-between; gap:12px; }
+.cycle-fertility-panel .eyebrow { margin-bottom:5px; font-size:8px; }
+.cycle-fertility-panel h3 { margin:0; font-size:23px; }
+.cycle-fertility-panel>header>span { flex:0 0 auto; color:var(--muted); font-size:9px; text-align:right; }
+.cycle-fertility-panel>header small { display:block; margin-top:4px; font-size:8px; }
+.cycle-fertility-state { display:flex; align-items:flex-start; gap:12px; margin:16px 0 10px; padding:14px; border-radius:14px; }
+.cycle-fertility-state>i { display:flex; align-items:center; justify-content:center; flex:0 0 auto; width:25px; height:25px; border:1px solid currentColor; border-radius:50%; font-size:10px; font-style:normal; }
+.cycle-fertility-state strong { font-size:12px; font-weight:700; line-height:1.4; }
+.cycle-fertility-state p { margin:6px 0 0; font-size:10px; line-height:1.6; }
+.cycle-fertility-safety { margin:0 0 15px; color:var(--muted); font-size:9px; line-height:1.6; }
+.cycle-fertility-basis { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px; }
+.cycle-fertility-basis article { min-width:0; padding:12px; border-radius:12px; background:var(--paper); }
+.cycle-fertility-basis span { display:block; color:var(--muted); font-size:8px; }
+.cycle-fertility-basis strong { display:block; margin:7px 0 5px; font-size:10px; line-height:1.5; font-weight:600; }
+.cycle-fertility-basis small { display:block; color:var(--muted); font-size:8px; line-height:1.6; }
+.cycle-fertility-limitations { margin:13px 0 0; padding-left:16px; color:var(--muted); font-size:9px; line-height:1.6; }
+.cycle-fertility-limitations li+li { margin-top:5px; }
+.cycle-fertility-explanation { margin-top:15px; padding-top:12px; border-top:1px solid var(--line); color:var(--muted); font-size:9px; line-height:1.7; }
+.cycle-fertility-explanation summary { color:var(--sage-dark); cursor:pointer; font-size:10px; font-weight:700; }
+.cycle-fertility-explanation ul,.cycle-fertility-explanation ol { padding-left:17px; }
+.cycle-fertility-explanation li+li { margin-top:8px; }
+.cycle-fertility-explanation li small { display:block; margin-top:3px; font-size:8px; }
+.cycle-fertility-sources { display:flex; flex-wrap:wrap; gap:6px 12px; margin-top:12px; }
+.cycle-fertility-sources a { color:var(--sage-dark); text-decoration:underline; text-underline-offset:3px; }
+.cycle-fertility-version { display:block; margin-top:12px; font-size:7px; }
 @media (max-width:600px) {
   .analytics-modal.body-cycle-analytics { padding:21px 14px calc(20px + env(safe-area-inset-bottom)); }
   .cycle-history-heading { align-items:flex-start; font-size:10px; }
@@ -157,4 +201,7 @@
   .cycle-detail-temperature { align-items:flex-start; gap:10px; padding:12px; }
   .cycle-detail-temperature>strong { font-size:26px; }
   .cycle-pattern-summary dl { grid-template-columns:1fr; }
+  .cycle-fertility-panel { padding:15px; }
+  .cycle-fertility-panel h3 { font-size:21px; }
+  .cycle-fertility-basis { grid-template-columns:1fr; }
 }

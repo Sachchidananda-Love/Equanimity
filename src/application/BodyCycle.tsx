@@ -2,9 +2,11 @@
 
 import { Fragment, useEffect, useRef, useState, type CSSProperties } from "react";
 import type { CycleDayLog, CycleLog } from "../domain/cycle/types";
-import { dateOnlyTimestamp, displayDay, dateOnlyDay } from "../domain/dates/calendar";
-import { cycleSummary, deriveCycleInsights } from "../domain/cycle/calculations";
+import { dateOnlyTimestamp, displayDay, dateOnlyDay, localCalendarDate } from "../domain/dates/calendar";
+import { deriveCycleInsights } from "../domain/cycle/calculations";
 import { cycleChartDays, cycleObservationFields, cycleObservationText, cycleStartDates, cycleTemperatureScale, cycleTemperatureSegments, recordedCycleValue } from "../domain/cycle/chart";
+import { deriveFertilityDay, deriveFertilityTimeline } from "../domain/cycle/fertility";
+import { CycleFertilityEstimate, FertilityChartRow, FertilityLegend } from "./CycleFertility";
 
 const mucusLevels = ["Egg white", "Watery", "Creamy", "Sticky", "None / dry"] as const;
 const ranges = ["7d", "30d", "90d", "1yr", "All"] as const;
@@ -34,6 +36,7 @@ export function CycleTrackingChart({ cycleLog, history, compact = false, selecte
 }) {
   const scroll = useRef<HTMLDivElement>(null);
   const days = cycleChartDays(cycleLog, history);
+  const fertility = deriveFertilityTimeline(cycleLog, days.map(day => day.date));
   const scale = cycleTemperatureScale(history);
   const segments = cycleTemperatureSegments(days, scale.position);
   const rows = compact ? [] : cycleObservationFields.filter(({ field }) => field !== "flow" && field !== "cervicalMucus" && (showAllRows || history.some(day => recordedCycleValue(day, field) !== undefined)));
@@ -91,6 +94,7 @@ export function CycleTrackingChart({ cycleLog, history, compact = false, selecte
         </div>
         <div className="cycle-temperature-axis cycle-sticky-right" aria-label="Temperature scale">{scale.ticks.map(tick => <span key={tick} style={{ top: `${scale.position(tick)}%` }}>{(fahrenheit ? tick * 9 / 5 + 32 : tick).toFixed(1)}</span>)}</div>
 
+        <FertilityChartRow estimates={fertility} selectedDate={selectedDate} onSelect={onSelect} />
         {rows.map(({ field, label, group }) => <Fragment key={field}>
           <div className="cycle-row-label cycle-sticky-left" title={label}>{label}</div>
           <div className={`cycle-observation-row group-${group.toLowerCase()}`}>{days.map(day => <button type="button" key={day.date} className={`${day.date === selectedDate ? "is-selected" : ""} ${recordedCycleValue(day.record, field) !== undefined ? "has-observation" : ""}`} onClick={() => onSelect?.(day.date)} aria-label={`${formatDate(day.date)}, ${label}: ${cycleObservationText(day.record, field)}`} title={`${label}: ${cycleObservationText(day.record, field)}`}><span>{shortObservation(day.record, field)}</span></button>)}</div>
@@ -99,7 +103,8 @@ export function CycleTrackingChart({ cycleLog, history, compact = false, selecte
       </div>
     </div>
     <div className="body-cycle-legend"><span><i className="legend-temperature" />Temperature</span><span><i className="legend-mucus" />Mucus</span><span><i className="legend-menses" />Menses</span>{!compact && <span><i className="legend-questionable" />Questionable</span>}</div>
-    {!compact && <p className="cycle-chart-hint">Swipe for earlier dates · tap a day for every observation. Gaps mean no measurement.</p>}
+    {!compact && <FertilityLegend />}
+    {!compact && <p className="cycle-chart-hint">Swipe for earlier dates · tap a day for every observation. Gaps mean no measurement. Fertility labels are app estimates, not contraception guarantees.</p>}
   </div>;
 }
 
@@ -108,10 +113,10 @@ export function BodyCycleCard({ cycleLog, now, onLog, onExpand }: { cycleLog: Cy
   const latestTemperature = [...history].reverse().find(day => recordedCycleValue(day, "temperature") !== undefined);
   const lastDay = history.at(-1)?.date;
   const recent = history.filter(day => !lastDay || dateOnlyDay(day.date)! >= dateOnlyDay(lastDay)! - 13);
-  const cycle = cycleSummary(cycleLog, new Date(now));
+  const estimate = deriveFertilityDay(cycleLog, localCalendarDate(now));
   return <article className="body-cycle-card card">
     <div className="body-cycle-card-heading"><div><p className="eyebrow">Your daily observations</p><h2>Body & cycle</h2></div><div className="card-actions">{onLog && <button type="button" className="log-cycle-button" onClick={onLog}>＋ Log</button>}{onExpand && <button type="button" className="expand-button" onClick={onExpand} aria-label="Expand Body & cycle">Expand ↗</button>}</div></div>
-    <div className="body-cycle-card-summary"><span>{cycle.day ? <><b>Day {cycle.day}</b> · {cycle.phase}</> : "Record a period start for cycle days"}</span><strong>{latestTemperature?.temperature !== undefined ? `${latestTemperature.temperature.toFixed(2)}°C` : "—"}<small>{latestTemperature?.temperatureSource ?? "Temperature"}</small></strong></div>
+    <div className="body-cycle-card-summary"><span>{estimate.cycleDay ? <><b>Day {estimate.cycleDay}</b> · {estimate.label}</> : "Record a period start for cycle days"}<small>App estimate · not contraception</small></span><strong>{latestTemperature?.temperature !== undefined ? `${latestTemperature.temperature.toFixed(2)}°C` : "—"}<small>{latestTemperature?.temperatureSource ?? "Temperature"}</small></strong></div>
     <CycleTrackingChart cycleLog={cycleLog} history={recent} compact onSelect={onExpand ? () => onExpand() : undefined} />
     <div className="body-cycle-card-footer"><span>{history.length} recorded {history.length === 1 ? "day" : "days"}</span><span>{lastDay ? `Latest ${formatDate(lastDay)}` : "Waiting for observations"}</span></div>
   </article>;
@@ -153,7 +158,8 @@ export function BodyCycleAnalytics({ cycleLog, now, onClose }: { cycleLog: Cycle
   const lastTemperature = temperatures.at(-1);
   const lastMucus = mucus.at(-1);
   const lastFlow = flow.at(-1);
-  const cycle = cycleSummary(cycleLog, new Date(now));
+  const currentEstimate = deriveFertilityDay(cycleLog, localCalendarDate(now));
+  const selectedEstimate = deriveFertilityDay(cycleLog, selectedDate ?? localCalendarDate(now));
   const selectedRecord = history.find(day => day.date === selectedDate);
   const selectedTemperature = recordedCycleValue(selectedRecord, "temperature");
   const latestStart = cycleStartDates(cycleLog).filter(date => !history.length || date <= history.at(-1)!.date).at(-1);
@@ -162,13 +168,14 @@ export function BodyCycleAnalytics({ cycleLog, now, onClose }: { cycleLog: Cycle
   return <section className="analytics-modal body-cycle-analytics" role="dialog" aria-modal="true" aria-labelledby="body-cycle-title">
     <header className="modal-header"><div><p className="eyebrow">Your body, over time</p><h2 id="body-cycle-title">Body & cycle</h2></div><button type="button" className="close-button" aria-label="Close Body & cycle" onClick={onClose}>×</button></header>
     <div className="range-tabs" style={{ "--range-offset": `${ranges.indexOf(range) * 100}%` } as CSSProperties}>{ranges.map(item => <button type="button" key={item} className={range === item ? "active" : ""} aria-pressed={range === item} onClick={() => { setRange(item); setSelected(null); }}>{item}</button>)}</div>
-    <div className="cycle-history-heading"><span>{history.length ? `${formatDate(history[0].date)} – ${formatDate(history.at(-1)!.date, { month: "short", day: "numeric", year: "numeric" })}` : "No observations in this range"}<small>{history.length} recorded days · {temperatures.length} temperatures</small></span><span className="cycle-phase-tag">{cycle.day ? `Day ${cycle.day} · ${cycle.phase}` : "Period start not recorded"}</span></div>
+    <div className="cycle-history-heading"><span>{history.length ? `${formatDate(history[0].date)} – ${formatDate(history.at(-1)!.date, { month: "short", day: "numeric", year: "numeric" })}` : "No observations in this range"}<small>{history.length} recorded days · {temperatures.length} temperatures</small></span><span className="cycle-phase-tag">{currentEstimate.cycleDay ? `Day ${currentEstimate.cycleDay} · App-derived estimates` : "Period start not recorded"}</span></div>
     <div className="cycle-chart-card">
       <div className="cycle-chart-tools"><span>Daily chart</span><div><button type="button" onClick={() => setDayWidth(dayWidth === 32 ? 48 : 32)} aria-label={dayWidth === 32 ? "Enlarge day columns" : "Compact day columns"}>{dayWidth === 32 ? "Zoom +" : "Zoom −"}</button><button type="button" onClick={() => setFahrenheit(!fahrenheit)} aria-label={`Temperature unit: ${fahrenheit ? "Fahrenheit" : "Celsius"}; switch units`}>°{fahrenheit ? "F" : "C"}</button></div></div>
       {selectedDate && <div className="cycle-selected-summary"><span><b>{formatDate(selectedDate)}</b> · {typeof selectedTemperature === "number" ? temperatureText(selectedTemperature, fahrenheit) : "BBT not recorded"}<small>{cycleObservationText(selectedRecord, "cervicalMucus")} mucus · {cycleObservationText(selectedRecord, "flow")} flow</small></span><button type="button" onClick={() => detail.current?.scrollIntoView({ behavior: "smooth", block: "start" })}>Day details ↓</button></div>}
       <CycleTrackingChart cycleLog={cycleLog} history={history} selectedDate={selectedDate} onSelect={setSelected} fahrenheit={fahrenheit} showAllRows={showAllRows} dayWidth={dayWidth} />
       {history.length > 0 && <label className="cycle-show-rows"><input type="checkbox" checked={showAllRows} onChange={event => setShowAllRows(event.target.checked)} />Show rows without observations</label>}
     </div>
+    <CycleFertilityEstimate estimate={selectedEstimate} fahrenheit={fahrenheit} />
     <div className="cycle-latest-grid">{[{ label: "Latest BBT", value: lastTemperature?.temperature !== undefined ? temperatureText(lastTemperature.temperature, fahrenheit) : "—", day: lastTemperature }, { label: "Cervical mucus", value: lastMucus ? cycleObservationText(lastMucus, "cervicalMucus") : "—", day: lastMucus }, { label: "Menstrual flow", value: lastFlow ? cycleObservationText(lastFlow, "flow") : "—", day: lastFlow }].map(item => <article key={item.label}><span>{item.label}</span><strong>{item.value}</strong><small>{item.day ? formatDate(item.day.date) : "Not recorded"}</small></article>)}</div>
     {selectedDate && <div ref={detail}><CycleDayDetail cycleLog={cycleLog} history={history} date={selectedDate} fahrenheit={fahrenheit} onSelect={setSelected} /></div>}
     {history.length > 0 && <section className="cycle-pattern-summary"><h3>Recorded patterns</h3><dl>
@@ -178,6 +185,6 @@ export function BodyCycleAnalytics({ cycleLog, now, onClose }: { cycleLog: Cycle
       <div><dt>Common symptoms</dt><dd>{insights.commonSymptoms.length ? insights.commonSymptoms.join(" · ") : "None recorded in the latest cycle"}</dd></div>
     </dl></section>}
     <p className="cycle-data-caption">Temperature, mucus and menstrual flow include saved Tempdrop imports. Additional rows show your recorded check-ins; missing observations stay blank.</p>
-    <p className="cycle-safety">Cycle phase is an app estimate from recorded period starts, not a Tempdrop fertility result. It is not contraception or medical advice.</p>
+    <p className="cycle-safety">Fertility states are app-derived estimates from saved observations, not Tempdrop fertility results or contraception guarantees. No day is identified as pregnancy-risk-free.</p>
   </section>;
 }

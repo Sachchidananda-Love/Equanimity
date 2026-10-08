@@ -1,19 +1,10 @@
 import type { CycleDayLog, CycleLog } from "./types";
-import { cycleFieldRecorded } from "./calculations";
+import { recordedCycleValue, cycleStartDates } from "./observations";
 import { dateOnlyDay, MILLISECONDS_PER_DAY } from "../dates/calendar";
 
+export { recordedCycleValue, cycleStartDates } from "./observations";
+
 export type CycleChartDay = { date: string; record?: CycleDayLog; cycleDay: number | null; cycleStart: boolean };
-
-export function recordedCycleValue<K extends keyof CycleDayLog>(record: CycleDayLog | undefined, field: K): CycleDayLog[K] | undefined {
-  return record && cycleFieldRecorded(record, field) ? record[field] : undefined;
-}
-
-export function cycleStartDates(log: CycleLog) {
-  return [...new Set([
-    ...(dateOnlyDay(log.lastPeriod) !== null ? [log.lastPeriod] : []),
-    ...log.history.filter(day => recordedCycleValue(day, "cycleDayOne") === true && day.recordOrigin !== "sample").map(day => day.date),
-  ])].sort();
-}
 
 /** Calendar spacing includes days without a measurement. A cycle day requires a recorded start. */
 export function cycleChartDays(log: CycleLog, history: CycleDayLog[]): CycleChartDay[] {
