@@ -1,0 +1,160 @@
+.body-cycle-card { display:flex; flex-direction:column; gap:10px; padding:17px 19px; overflow:hidden; }
+.body-cycle-card-heading { display:flex; align-items:flex-start; justify-content:space-between; gap:10px; }
+.body-cycle-card-heading .eyebrow { margin-bottom:4px; font-size:8px; }
+.body-cycle-card-heading h2 { font-size:23px; }
+.body-cycle-card-heading .expand-button { white-space:nowrap; }
+.body-cycle-card-summary { display:flex; align-items:center; justify-content:space-between; gap:12px; min-height:34px; }
+.body-cycle-card-summary>span { color:var(--muted); font-size:9px; line-height:1.4; }
+.body-cycle-card-summary b { color:var(--sage-dark); }
+.body-cycle-card-summary strong { flex:0 0 auto; font-family:Iowan Old Style,Georgia,serif; font-size:21px; font-weight:500; text-align:right; }
+.body-cycle-card-summary small { display:block; margin-top:1px; color:var(--muted); font-family:var(--font-geist-sans),Arial,sans-serif; font-size:7px; }
+.body-cycle-card-footer { display:flex; justify-content:space-between; gap:10px; margin-top:auto; color:var(--muted); font-size:8px; }
+.analytics-modal.body-cycle-analytics { width:min(100%,1080px); }
+.body-cycle-analytics .modal-header { margin-bottom:19px; }
+.cycle-history-heading { display:flex; justify-content:space-between; align-items:center; gap:12px; margin:20px 0 13px; font-size:11px; }
+.cycle-history-heading small { display:block; margin-top:4px; color:var(--muted); font-size:9px; }
+.cycle-phase-tag { max-width:48%; padding:8px 11px; border-radius:12px; background:var(--sage-pale); color:var(--sage-dark); font-size:9px; line-height:1.35; }
+.cycle-chart-card { padding:16px; border:1px solid var(--line); border-radius:20px; background:var(--card); }
+.cycle-chart-tools { display:flex; align-items:center; justify-content:space-between; margin:0 0 13px; }
+.cycle-chart-tools>span { font-size:10px; font-weight:750; }
+.cycle-chart-tools>div { display:flex; gap:6px; }
+.cycle-chart-tools button { min-height:30px; padding:6px 10px; border:1px solid var(--line); border-radius:999px; background:var(--paper); color:var(--sage-dark); font-size:9px; font-weight:700; }
+.cycle-selected-summary { display:flex; align-items:center; justify-content:space-between; gap:8px; padding:10px 12px; margin-bottom:12px; border-radius:12px; background:var(--sage-pale); color:var(--sage-dark); font-size:10px; }
+.cycle-selected-summary small { display:block; margin-top:4px; color:var(--muted); font-size:8px; line-height:1.4; }
+.cycle-selected-summary button { flex:0 0 auto; min-height:32px; padding:6px; border:0; background:transparent; color:var(--sage-dark); font-size:9px; font-weight:700; }
+.body-cycle-chart { --cycle-label-width:84px; --cycle-axis-width:52px; --cycle-plot-height:330px; --cycle-row-height:35px; --cycle-grid-color:rgba(113,128,120,.17); min-width:0; }
+.body-cycle-scroll { position:relative; width:100%; overflow-x:auto; overscroll-behavior-x:contain; touch-action:pan-x pan-y; border:1px solid var(--line); border-radius:12px; scrollbar-width:thin; scrollbar-color:var(--sage) transparent; }
+.body-cycle-grid { display:grid; grid-template-columns:var(--cycle-label-width) minmax(0,1fr) var(--cycle-axis-width); min-width:max(100%,calc(var(--cycle-days) * var(--cycle-day-width) + var(--cycle-label-width) + var(--cycle-axis-width))); }
+.cycle-sticky-left { position:sticky; left:0; z-index:5; background:var(--card); border-right:1px solid var(--line); }
+.cycle-sticky-right { position:sticky; right:0; z-index:5; background:var(--card); border-left:1px solid var(--line); }
+.cycle-axis-heading { display:flex; flex-direction:column; align-items:center; justify-content:center; gap:6px; min-height:63px; color:var(--muted); font-size:8px; border-bottom:1px solid var(--line); }
+.cycle-axis-heading b { color:var(--sage-dark); font-size:8px; font-weight:700; }
+.cycle-calendar { display:grid; grid-template-columns:repeat(var(--cycle-days),minmax(0,1fr)); background:var(--paper); border-bottom:1px solid var(--line); }
+.cycle-calendar button { min-width:0; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:3px; padding:5px 0; border:0; border-right:1px solid var(--cycle-grid-color); background:transparent; font-size:10px; }
+.cycle-calendar small { color:var(--muted); font-size:7px; }
+.cycle-calendar b { margin-top:3px; color:var(--sage-dark); font-size:9px; }
+.cycle-calendar .is-start b { color:var(--coral); }
+.cycle-calendar button.is-selected { background:var(--sage-pale); }
+.cycle-mucus-axis { display:grid; grid-template-rows:repeat(5,14%) 30%; height:var(--cycle-plot-height); }
+.cycle-mucus-axis>div { display:flex; align-items:center; gap:6px; padding:0 7px; color:var(--sage-dark); font-size:8px; border-bottom:1px solid rgba(113,128,120,.08); }
+.cycle-mucus-axis i { display:block; width:6px; height:6px; flex:0 0 auto; border-radius:50%; background:var(--sage-dark); }
+.mucus-0 { background:#c6ded1; }
+.mucus-1 { background:#d9e7df; }
+.mucus-2 { background:#e4ece4; }
+.mucus-3 { background:#eeeae0; }
+.mucus-4 { background:#e5e3de; }
+.cycle-mucus-axis .menses-level { color:#9b5e4b; background:var(--coral-pale); }
+.cycle-mucus-axis .menses-level i { background:var(--coral); }
+.cycle-daily-plot { position:relative; height:var(--cycle-plot-height); background:var(--card); }
+.cycle-observation-columns { position:absolute; inset:0; display:grid; grid-template-columns:repeat(var(--cycle-days),minmax(0,1fr)); }
+.cycle-observation-columns>div { position:relative; border-right:1px solid var(--cycle-grid-color); }
+.cycle-observation-columns>div.is-selected { background:rgba(142,174,158,.09); }
+.cycle-observation-columns>div.is-start { border-left:2px solid var(--coral); }
+.cycle-mucus-bar { position:absolute; left:25%; width:50%; height:12%; border-radius:3px; opacity:.95; }
+.cycle-mucus-bar.mucus-0 { background:#77a58e; }
+.cycle-mucus-bar.mucus-1 { background:#a6c6b4; }
+.cycle-mucus-bar.mucus-2 { background:#c4d6c4; }
+.cycle-mucus-bar.mucus-3 { background:#d6c8a9; }
+.cycle-mucus-bar.mucus-4 { background:#cfcdc7; }
+.cycle-menses-bar { position:absolute; bottom:2%; left:25%; width:50%; border-radius:3px 3px 0 0; background:var(--coral); opacity:.68; }
+.cycle-menses-bar.is-spotting { background:repeating-linear-gradient(to top,var(--coral) 0 3px,transparent 3px 6px); }
+.cycle-day-hit { position:absolute; inset:0; z-index:3; width:100%; border:0; padding:0; background:transparent; }
+.cycle-temperature-grid { position:absolute; inset:0; pointer-events:none; }
+.cycle-temperature-grid i { position:absolute; left:0; right:0; border-top:1px solid var(--cycle-grid-color); }
+.cycle-temperature-path { position:absolute; inset:0; width:100%; height:100%; overflow:visible; pointer-events:none; }
+.cycle-temperature-path line { stroke:var(--ink); stroke-width:2; vector-effect:non-scaling-stroke; }
+.cycle-temperature-path line.is-questionable { stroke:var(--muted); stroke-dasharray:3 3; }
+.cycle-temperature-points { position:absolute; inset:0; pointer-events:none; }
+.cycle-temperature-point { position:absolute; display:block; width:8px; height:8px; aspect-ratio:1; border:1px solid var(--ink); border-radius:50%; background:var(--ink); transform:translate(-50%,-50%); box-sizing:border-box; }
+.cycle-temperature-point.is-questionable { background:var(--card); border-color:var(--muted); }
+.cycle-temperature-point.is-selected { box-shadow:0 0 0 3px rgba(79,116,101,.22); }
+.cycle-temperature-axis { position:sticky; height:var(--cycle-plot-height); }
+.cycle-temperature-axis>span { position:absolute; left:0; right:0; transform:translateY(-50%); color:var(--muted); text-align:center; font-size:9px; font-variant-numeric:tabular-nums; }
+.cycle-row-label,.cycle-row-end { display:flex; align-items:center; min-height:var(--cycle-row-height); padding:5px 7px; border-top:1px solid var(--line); color:var(--muted); font-size:8px; }
+.cycle-observation-row { display:grid; grid-template-columns:repeat(var(--cycle-days),minmax(0,1fr)); min-height:var(--cycle-row-height); border-top:1px solid var(--line); }
+.cycle-observation-row button { min-width:0; overflow:hidden; padding:3px 1px; border:0; border-right:1px solid var(--cycle-grid-color); background:transparent; color:#aaa; font-size:8px; }
+.cycle-observation-row span { display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.cycle-observation-row button.has-observation { color:var(--sage-dark); background:rgba(142,174,158,.06); font-weight:700; }
+.cycle-observation-row.group-body button.has-observation { color:#9b5e4b; }
+.cycle-observation-row.group-sleep button.has-observation { color:#78658a; }
+.cycle-observation-row.group-notes button.has-observation { color:#8e692d; }
+.cycle-observation-row button.is-selected { background:var(--sage-pale); }
+.body-cycle-legend { display:flex; flex-wrap:wrap; align-items:center; gap:8px 14px; margin-top:12px; color:var(--muted); font-size:9px; }
+.body-cycle-legend span { display:flex; align-items:center; gap:5px; }
+.body-cycle-legend i { width:7px; height:7px; flex:0 0 auto; border-radius:2px; }
+.legend-temperature { background:var(--ink); border-radius:50%!important; }
+.legend-mucus { background:var(--sage); }
+.legend-menses { background:var(--coral); }
+.legend-questionable { border:1px solid var(--muted); border-radius:50%!important; }
+.cycle-chart-hint { margin:10px 0 0; color:var(--muted); font-size:9px; line-height:1.5; }
+.cycle-show-rows { display:flex; align-items:center; gap:7px; margin-top:12px; color:var(--muted); font-size:9px; }
+.cycle-show-rows input { accent-color:var(--sage-dark); }
+.is-compact { --cycle-label-width:68px; --cycle-axis-width:40px; --cycle-plot-height:140px; }
+.is-compact .cycle-axis-heading { min-height:43px; font-size:7px; gap:4px; }
+.is-compact .cycle-axis-heading b { font-size:7px; }
+.is-compact .cycle-calendar button { gap:1px; padding:2px 0; font-size:8px; }
+.is-compact .cycle-calendar small { font-size:6px; }
+.is-compact .cycle-calendar b { font-size:7px; margin-top:1px; }
+.is-compact .cycle-mucus-axis>div { gap:4px; padding:0 5px; font-size:6px; }
+.is-compact .cycle-mucus-axis i { width:4px; height:4px; }
+.is-compact .cycle-temperature-axis>span { font-size:7px; }
+.is-compact .cycle-temperature-point { width:6px; height:6px; }
+.is-compact .body-cycle-legend { margin-top:7px; font-size:7px; gap:12px; }
+.is-compact .body-cycle-legend i { width:5px; height:5px; }
+.body-cycle-empty { min-height:190px; display:flex; flex-direction:column; align-items:center; justify-content:center; padding:20px; color:var(--muted); text-align:center; }
+.body-cycle-empty>span { color:var(--sage); font-size:30px; }
+.body-cycle-empty b { margin:8px 0; color:var(--ink); font-family:Iowan Old Style,Georgia,serif; font-size:20px; font-weight:500; }
+.body-cycle-empty p { max-width:300px; margin:0; font-size:10px; line-height:1.6; }
+.cycle-latest-grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:10px; margin:15px 0; }
+.cycle-latest-grid article { min-width:0; padding:15px; border-radius:17px; background:var(--card); }
+.cycle-latest-grid span,.cycle-latest-grid small { display:block; color:var(--muted); font-size:9px; }
+.cycle-latest-grid strong { display:block; margin:10px 0 5px; font-family:Iowan Old Style,Georgia,serif; font-size:23px; line-height:1.1; font-weight:500; overflow-wrap:anywhere; }
+.cycle-latest-grid small { font-size:8px; }
+.cycle-day-detail { padding:19px; border:1px solid var(--line); border-radius:20px; background:var(--card); }
+.cycle-day-detail>header { display:flex; align-items:center; justify-content:space-between; gap:12px; }
+.cycle-day-detail .eyebrow { margin-bottom:5px; font-size:8px; }
+.cycle-day-detail h3 { margin:0; font-size:21px; line-height:1.25; }
+.cycle-day-navigation { display:flex; gap:5px; flex:0 0 auto; }
+.cycle-day-navigation button { width:32px; height:32px; border:1px solid var(--line); border-radius:50%; background:var(--paper); color:var(--sage-dark); }
+.cycle-day-navigation button:disabled { opacity:.3; }
+.cycle-detail-temperature { display:flex; align-items:center; gap:15px; margin:18px 0; padding:14px; border-radius:14px; background:var(--sage-pale); }
+.cycle-detail-temperature>strong { color:var(--ink); font-family:Iowan Old Style,Georgia,serif; font-size:30px; font-weight:500; }
+.cycle-detail-temperature>span { color:var(--sage-dark); font-size:10px; }
+.cycle-detail-temperature small { display:block; margin-top:5px; color:var(--muted); font-size:9px; line-height:1.4; }
+.cycle-detail-groups { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:16px 22px; }
+.cycle-detail-groups h4 { margin:16px 0 8px; color:var(--sage-dark); font-size:10px; }
+.cycle-detail-groups dl { margin:0; }
+.cycle-detail-groups dl>div { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1.2fr); gap:8px; padding:9px 0; border-top:1px solid var(--line); font-size:10px; line-height:1.5; }
+.cycle-detail-groups dt { color:var(--muted); }
+.cycle-detail-groups dd { margin:0; text-align:right; overflow-wrap:anywhere; }
+.cycle-detail-groups dd small { display:block; margin-top:2px; color:var(--muted); font-size:8px; }
+.cycle-detail-source,.cycle-detail-missing,.cycle-data-caption { margin:14px 0 0; color:var(--muted); font-size:9px; line-height:1.6; }
+.body-cycle-analytics>.cycle-safety { margin:8px 0 0; }
+.cycle-pattern-summary { margin-top:17px; }
+.cycle-pattern-summary h3 { margin:0 0 12px; font-size:20px; }
+.cycle-pattern-summary dl { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px; margin:0; }
+.cycle-pattern-summary dl>div { min-width:0; padding:14px; border-radius:14px; background:var(--card); }
+.cycle-pattern-summary dt { color:var(--muted); font-size:9px; }
+.cycle-pattern-summary dd { margin:8px 0 0; font-size:11px; line-height:1.5; }
+.cycle-pattern-summary small { display:block; margin-top:4px; color:var(--muted); font-size:8px; }
+@media (max-width:600px) {
+  .analytics-modal.body-cycle-analytics { padding:21px 14px calc(20px + env(safe-area-inset-bottom)); }
+  .cycle-history-heading { align-items:flex-start; font-size:10px; }
+  .cycle-phase-tag { font-size:8px; padding:7px 9px; }
+  .cycle-chart-card { padding:12px 9px; }
+  .body-cycle-chart:not(.is-compact) { --cycle-label-width:68px; --cycle-axis-width:43px; --cycle-plot-height:285px; }
+  .cycle-mucus-axis>div { gap:4px; padding:0 5px; font-size:7px; }
+  .cycle-mucus-axis i { width:4px; height:4px; }
+  .cycle-temperature-axis>span { font-size:8px; }
+  .cycle-row-label { padding:5px; font-size:7px; }
+  .cycle-latest-grid { gap:7px; }
+  .cycle-latest-grid article { padding:12px 10px; }
+  .cycle-latest-grid span { font-size:8px; }
+  .cycle-latest-grid strong { font-size:20px; }
+  .cycle-day-detail { padding:15px; }
+  .cycle-day-detail h3 { font-size:18px; }
+  .cycle-detail-groups { grid-template-columns:1fr; gap:0; }
+  .cycle-detail-temperature { align-items:flex-start; gap:10px; padding:12px; }
+  .cycle-detail-temperature>strong { font-size:26px; }
+  .cycle-pattern-summary dl { grid-template-columns:1fr; }
+}

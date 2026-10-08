@@ -58,7 +58,7 @@ test("keeps durable timers and responsive controls in the product source", async
   const [page, wrapper, css, layout, quotes] = await Promise.all([
     readFile(new URL("../app/YiApp.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
-    readFile(new URL("../app/globals.css", import.meta.url), "utf8"),
+    Promise.all(["../app/globals.css", "../src/application/body-cycle.css"].map(path => readFile(new URL(path, import.meta.url), "utf8"))).then(parts => parts.join("\n")),
     readFile(new URL("../app/layout.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/quotes.ts", import.meta.url), "utf8"),
   ]);
@@ -80,7 +80,7 @@ test("keeps durable timers and responsive controls in the product source", async
   assert.match(page, /ActivityHistoryChart/);
   assert.match(page, /Calculated from logged/);
   assert.match(page, /JournalEntryChooser/);
-  assert.match(page, /CycleTrackingChart/);
+  assert.match(page, /BodyCycleCard/);
   assert.match(page, /cervicalMucus/);
   assert.match(page, /sleepInterruptions/);
   assert.match(page, /PracticeRhythmChart/);
@@ -140,11 +140,11 @@ test("keeps durable timers and responsive controls in the product source", async
   assert.match(css, /\.assessment-chart canvas/);
   assert.match(css, /\.cube-face[^}]*background-size:cover/);
   assert.match(css, /\.activity-history-chart/);
-  assert.match(css, /\.cycle-tracking-chart/);
+  assert.match(css, /\.body-cycle-chart/);
   assert.match(css, /\.mini-gong-mark/);
   assert.match(css, /\.journal-calendar/);
   assert.match(css, /\.archive-widget-list/);
-  assert.match(css, /\.cycle-analytics/);
+  assert.match(css, /\.body-cycle-analytics/);
   assert.match(css, /@media \(max-width:360px\)/);
   assert.match(css, /safe-area-inset-bottom/);
   assert.match(layout, /Yi — practice, cycle & wellbeing/);

@@ -132,6 +132,27 @@ test("all three verified Tempdrop metrics reach persisted health and cycle summa
   assert.equal(cycleDisplayLog(emptyCycle(), unknown).history.length, 0);
 });
 
+test("the cycle display honors verified period-start metadata without inventing starts or changing saved records", () => {
+  for (const key of ["healthkit.HKMenstrualCycleStart", "healthkit.HKMetadataKeyMenstrualCycleStart"]) {
+    const flow = normalized(healthKitSample({ typeIdentifier: "HKCategoryTypeIdentifierMenstrualFlow", value: { kind: "category", value: "medium", unit: "category" }, metadata: { [key]: "1" } }));
+    const log = emptyCycle();
+    const original = structuredClone({ log, flow });
+    const display = cycleDisplayLog(log, flow);
+    assert.equal(display.lastPeriod, "2026-10-07");
+    assert.equal(display.history[0].cycleDayOne, true);
+    assert.ok(display.history[0].recordedFields.includes("cycleDayOne"));
+    assert.deepEqual(display.history[0].healthSourceRecordIds.cycleDayOne, [`healthkit:${UUID_A}`]);
+    assert.deepEqual({ log, flow }, original);
+
+    const manual = updateCycleField(createCycleDraft("2026-10-07"), "cycleDayOne", false);
+    const overridden = cycleDisplayLog({ ...log, history: [manual] }, flow);
+    assert.equal(overridden.history[0].cycleDayOne, false);
+    assert.equal(overridden.lastPeriod, "");
+  }
+  const noStart = normalized(healthKitSample({ typeIdentifier: "HKCategoryTypeIdentifierMenstrualFlow", value: { kind: "category", value: "heavy", unit: "category" } }));
+  assert.equal(cycleDisplayLog(emptyCycle(), noStart).lastPeriod, "");
+});
+
 test("cloud failures retain pending results across service restarts, explicit retry is idempotent", async () => {
   const fixture = setup(); fixture.service.setConsent(true); fixture.port.fail = true;
   const result = await fixture.service.importRecent(); assert.equal(result.state, "pending"); assert.equal(result.records.length, 1); assert.equal(fixture.port.writes, 0);

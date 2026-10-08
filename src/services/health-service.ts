@@ -107,6 +107,10 @@ export function cycleDisplayLog(log: CycleLog, health: HealthRecord[]): CycleLog
     const flow = selected["menstrual-flow"];
     if (flow?.value.kind === "category" && ["None", "Spotting", "Light", "Medium", "Heavy"].includes(flow.value.value)) {
       day.flow = flow.value.value as CycleDayLog["flow"]; fields.add("flow"); ids.flow = [flow.id];
+      const start = flow.provenance.metadata?.["healthkit.HKMenstrualCycleStart"] ?? flow.provenance.metadata?.["healthkit.HKMetadataKeyMenstrualCycleStart"];
+      if (verifiedHealthKitRecord(flow) && /^(true|1)$/i.test(start ?? "") && !fields.has("cycleDayOne")) {
+        day.cycleDayOne = true; fields.add("cycleDayOne"); ids.cycleDayOne = [flow.id];
+      }
     }
     if (!days.has(date) && !Object.keys(ids).length) continue;
     day.recordedFields = [...fields]; day.healthSourceRecordIds = ids;
@@ -115,5 +119,6 @@ export function cycleDisplayLog(log: CycleLog, health: HealthRecord[]): CycleLog
   }
   const history = [...days.values()].sort((a, b) => a.date.localeCompare(b.date));
   const latestTemperature = [...history].reverse().find(day => typeof day.temperature === "number" && day.recordedFields?.includes("temperature"));
-  return { ...log, history, temperature: latestTemperature?.temperature ?? log.temperature };
+  const lastPeriod = [...history].reverse().find(day => day.cycleDayOne && day.recordedFields?.includes("cycleDayOne"))?.date;
+  return { ...log, history, lastPeriod: lastPeriod && lastPeriod > log.lastPeriod ? lastPeriod : log.lastPeriod, temperature: latestTemperature?.temperature ?? log.temperature };
 }
