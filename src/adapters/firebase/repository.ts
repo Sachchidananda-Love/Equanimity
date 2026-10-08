@@ -2,6 +2,7 @@ import type { AppData, DataRepository } from "../../services/repository-contract
 import { defaultAppData, emptyCycle } from "../local/repository";
 import { activityValid, bookValid, cycleValid, healthValid, journalValid, object, parseArray, timerValid } from "../local/validation";
 import { separateLegacySamples } from "../../migrations/legacy";
+import { HEALTHKIT_PERSISTED_METADATA, verifiedHealthKitRecord } from "../../domain/health/import-policy";
 
 export type CloudDocument = { id: string; data: unknown };
 export type CloudWrite = { path: string; data: Record<string, unknown> };
@@ -9,7 +10,7 @@ export interface FirestorePort {
   currentUid(): string | null;
   read(path: string): Promise<unknown | null>;
   list(path: string): Promise<CloudDocument[]>;
-  commit(revisionPath: string, expectedRevision: number, writes: CloudWrite[]): Promise<void>;
+  commit(revisionPath: string, expectedRevision: number, writes: CloudWrite[], authorize?: () => void): Promise<void>;
 }
 const collections = { journal: "journalEntries", timers: "timerPresets", activities: "activityPresets", books: "books", health: "healthRecords" } as const;
 export function cloudRecordId(id: string | number) { return `${typeof id === "number" ? "n" : "s"}-${encodeURIComponent(String(id))}`; }
@@ -29,7 +30,7 @@ function validate(data: AppData) {
 }
 
 /** Stores validated observations, not domain calculations; never reads localStorage. */
-export function createFirebaseRepository(port: FirestorePort, uid: string): DataRepository {
+export function createFirebaseRepository(port: FirestorePort, uid: string, { healthKitConsent = () => false }: { healthKitConsent?: () => boolean } = {}): DataRepository {
   if (!uid || uid.includes("/")) throw new Error("Invalid Firebase UID");
   const root = `users/${uid}`; const revisionPath = `${root}/settings/repository`;
   let baseline: AppData | undefined; let revision = 0;
@@ -57,7 +58,16 @@ export function createFirebaseRepository(port: FirestorePort, uid: string): Data
     function rows(name: string) {
       return map[name].flatMap(document => {
         const value = unwrap(document.data);
-        if (value.deleted) return [];
+        if (value.deleted) {
+          const record = value.record;
+          // Keep imported UUID tombstones in the normalized health baseline so a
+          // later manual import cannot resurrect a removed source observation.
+          if (name === "healthRecords" && object(record) && object(record.provenance) && record.provenance.ingestion === "healthkit") {
+            if (!healthValid(record) || document.id !== cloudRecordId(record.id as string)) throw new Error("Malformed HealthKit tombstone; writes blocked");
+            return [{ ...record, status: "deleted" }];
+          }
+          return [];
+        }
         if (!object(value.record) || document.id !== cloudRecordId(value.record.id as string | number)) throw new Error("Cloud record ID mismatch");
         return [value.record];
       });
@@ -94,9 +104,19 @@ export function createFirebaseRepository(port: FirestorePort, uid: string): Data
     }
     if ("widgets" in changes) writes.push({ path: `${root}/settings/dashboard`, data: envelope({ widgets: next.widgets }) });
     if (!writes.length) return;
+    const authorize = () => {
+      guard();
+      for (const write of writes) {
+        const record = write.data.record;
+        if (!object(record) || !object(record.provenance) || record.provenance.ingestion !== "healthkit") continue;
+        if (!healthKitConsent()) throw new Error("Selected Apple Health cloud sync is disabled for this account");
+        if (!verifiedHealthKitRecord(record as AppData["health"][number]) || record.provenance.storage !== "cloud") throw new Error("HealthKit provider or metric is not approved for cloud import");
+        if (!object(record.provenance.metadata) || Object.keys(record.provenance.metadata).some(key => !HEALTHKIT_PERSISTED_METADATA.some(allowed => key === allowed))) throw new Error("Inspection metadata cannot be uploaded to cloud");
+      }
+    };
     if (writes.length > 400) throw new Error("Too many records changed in one operation (maximum 400). No partial write performed");
     writes.push({ path: revisionPath, data: envelope({ revision: revision + 1 }) });
-    guard(); await port.commit(revisionPath, revision, writes); guard();
+    authorize(); await port.commit(revisionPath, revision, writes, authorize); guard();
     writes.forEach(write => existingCollections.add(write.path.split("/")[2]));
     revision++; baseline = next;
   }

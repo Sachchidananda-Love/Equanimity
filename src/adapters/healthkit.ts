@@ -1,6 +1,7 @@
 import { Capacitor, registerPlugin } from "@capacitor/core";
 import type { HealthMetric, HealthRecord, HealthValue } from "../domain/health/types";
-import { DISPLAY_TIME_ZONE } from "../domain/dates/calendar";
+import { healthValid, object } from "./local/validation";
+import { healthKitProvider } from "../domain/health/import-policy";
 
 export type HealthKitTypeStatus = {
   identifier: string;
@@ -46,7 +47,7 @@ export type HealthKitSample = {
   source: {
     name: string;
     bundleIdentifier: string;
-    version: string;
+    version?: string;
     productType?: string;
     provider: string;
   };
@@ -109,28 +110,33 @@ function normalizedValue(sample: HealthKitSample): HealthValue {
 }
 
 export function normalizeHealthKitRecords(samples: HealthKitSample[], now = new Date().toISOString()): HealthRecord[] {
+  if (!Array.isArray(samples)) throw new Error("Malformed HealthKit response; no records were imported");
   return samples.flatMap((sample): HealthRecord[] => {
+    assertNativeSample(sample);
     const metric = metricForType(sample.typeIdentifier);
-    if (!metric || !sample.uuid || !sample.startDate || !sample.endDate || !sample.localDate) return [];
+    if (!metric) return [];
+    const uuid = sample.uuid.toUpperCase();
     const value = normalizedValue(sample);
     const provenance = {
-      provider: sample.source.provider || "other source",
+      provider: healthKitProvider(sample.source.name, sample.source.bundleIdentifier),
       ingestion: "healthkit" as const,
-      originalSourceId: sample.uuid,
+      originalSourceId: uuid,
       sourceAppId: sample.source.bundleIdentifier,
       ...(sample.device?.localIdentifier ? { sourceDeviceId: sample.device.localIdentifier } : {}),
       method: `healthkit:${sample.typeIdentifier}`,
       storage: "local-session-inspection" as const,
       metadata: {
         sourceName: sample.source.name,
-        sourceVersion: sample.source.version,
+        ...(sample.source.version ? { sourceVersion: sample.source.version } : {}),
         ...(sample.source.productType ? { sourceProductType: sample.source.productType } : {}),
         ...sample.device,
         ...sample.metadata,
+        typeIdentifier: sample.typeIdentifier,
+        ...(sample.categoryValue !== undefined ? { categoryValue: String(sample.categoryValue) } : {}),
       },
     };
-    return [{
-      id: `healthkit:${sample.uuid}`,
+    const record: HealthRecord = {
+      id: `healthkit:${uuid}`,
       schemaVersion: 1,
       metric,
       value,
@@ -138,12 +144,30 @@ export function normalizeHealthKitRecords(samples: HealthKitSample[], now = new 
       startAt: sample.startDate,
       endAt: sample.endDate,
       localDate: sample.localDate,
-      timeZone: sample.timeZone || DISPLAY_TIME_ZONE,
+      timeZone: sample.timeZone,
       provenance,
       status: "recorded",
       confidence: { level: "unknown", reason: "Imported from a HealthKit sample; source selection has not been applied." },
       createdAt: now,
       updatedAt: now,
-    }];
+    };
+    if (!healthValid(record)) throw new Error("Malformed HealthKit record; no records were imported");
+    return [record];
   });
+}
+
+function assertNativeSample(value: unknown): asserts value is HealthKitSample {
+  const strings = (item: unknown) => object(item) && Object.values(item).every(v => typeof v === "string" && v.length <= 4096);
+  if (!object(value) || typeof value.uuid !== "string" || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value.uuid)
+    || ![value.typeIdentifier, value.sampleType, value.startDate, value.endDate, value.localDate, value.timeZone].every(v => typeof v === "string" && v.length > 0)
+    || !object(value.source) || typeof value.source.name !== "string" || typeof value.source.bundleIdentifier !== "string" || !value.source.bundleIdentifier
+    || (value.source.version !== undefined && typeof value.source.version !== "string")
+    || (value.source.productType !== undefined && typeof value.source.productType !== "string")
+    || !strings(value.metadata) || (value.device !== undefined && !strings(value.device))
+    || !object(value.value)) throw new Error("Malformed HealthKit sample; no records were imported");
+  const metric = metricForType(String(value.typeIdentifier));
+  if (metric === "basal-temperature" && (value.value.kind !== "quantity" || value.value.unit !== "Cel" || typeof value.value.value !== "number" || !Number.isFinite(value.value.value))) throw new Error("Invalid basal temperature sample");
+  if (["sleep-stage", "menstrual-flow", "cervical-mucus", "ovulation-test"].includes(metric ?? "")
+    && (value.value.kind !== "category" || value.value.unit !== "category" || typeof value.value.value !== "string")) throw new Error("Invalid HealthKit category sample");
+  if (metric === "intercourse" && (value.value.kind !== "boolean" || value.value.unit !== "boolean" || value.value.value !== true)) throw new Error("Invalid HealthKit sexual activity sample");
 }

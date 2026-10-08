@@ -1,63 +1,40 @@
 "use client";
-import { useEffect, useState } from "react";
-import { healthKitStatus, inspectHealthKit, normalizeHealthKitRecords, requestHealthKitAuthorization } from "../adapters/healthkit";
-import type { HealthKitStatus } from "../adapters/healthkit";
-import type { HealthRecord } from "../domain/health/types";
+import { useHealthKitImport } from "./use-healthkit-import";
+import type { AppData, DataRepository } from "../services/repository-contracts";
 
-export function HealthKitTools() {
-  const [status, setStatus] = useState<HealthKitStatus | null>(null);
-  const [records, setRecords] = useState<HealthRecord[]>([]);
-  const [message, setMessage] = useState("Checking HealthKit availability…");
-  const [busy, setBusy] = useState(false);
-
-  const refresh = async () => {
-    setBusy(true);
-    try { setStatus(await healthKitStatus()); setMessage("HealthKit status refreshed. Read authorization is intentionally reported as unavailable when Apple does not expose it."); }
-    catch (error) { setMessage(`HealthKit status failed: ${String(error)}`); }
-    finally { setBusy(false); }
-  };
-  useEffect(() => {
-    let mounted = true;
-    void healthKitStatus().then(next => {
-      if (mounted) {
-        setStatus(next);
-        setMessage("HealthKit status refreshed. Read authorization is intentionally reported as unavailable when Apple does not expose it.");
-      }
-    }).catch(error => { if (mounted) setMessage(`HealthKit status failed: ${String(error)}`); });
-    return () => { mounted = false; };
-  }, []);
-
-  const authorize = async () => {
-    setBusy(true);
-    try { setStatus(await requestHealthKitAuthorization()); setMessage("Permission request completed. Run inspection to see what the device makes readable."); }
-    catch (error) { setMessage(`Permission request failed: ${String(error)}`); }
-    finally { setBusy(false); }
-  };
-  const inspect = async () => {
-    setBusy(true);
-    try {
-      const result = await inspectHealthKit(90);
-      const normalized = normalizeHealthKitRecords(result.records);
-      setRecords(normalized);
-      setMessage(`${result.message} ${normalized.length} normalized record${normalized.length === 1 ? "" : "s"} are held in this view only${result.errors.length ? `; ${result.errors.length} type query error${result.errors.length === 1 ? "" : "s"} returned.` : "."}`);
-    } catch (error) { setMessage(`Inspection failed: ${String(error)}`); }
-    finally { setBusy(false); }
-  };
-
-  return <section className="page" aria-label="HealthKit testing and inspection">
+export function HealthKitTools({ uid, repository, onImported, onBusy, cloudBusy = false }: {
+  uid?: string; repository?: DataRepository; onImported: (data: AppData) => void; onBusy: (busy: boolean) => void; cloudBusy?: boolean;
+}) {
+  const tools = useHealthKitImport({ uid, repository, onImported, onBusy });
+  const busy = tools.busy || cloudBusy;
+  const report = tools.result?.report;
+  return <section className="page" aria-label="Apple Health import and inspection">
     <details>
-      <summary>Testing / development · HealthKit inspection</summary>
-      <p>Read-only, device-local inspection. Nothing shown here is saved to the repository, uploaded to Firestore, or sent to analytics.</p>
-      <p role="status">{message}</p>
-      <p><strong>Availability:</strong> {status ? status.available ? "available" : "unavailable" : "checking…"} · <strong>Read permission state:</strong> {status?.readAuthorizationStatus ?? "unknown"}</p>
+      <summary>Apple Health · import & testing</summary>
+      <p>Import Tempdrop basal temperature, cervical mucus and menstrual flow from Apple Health. Sleep and other categories remain available for inspection.</p>
+      <label className="check-label"><input type="checkbox" checked={tools.enabled} disabled={busy || !tools.canSync} onChange={event => tools.consent(event.target.checked)} />Sync selected Apple Health data to private cloud</label>
+      <p>Enabling this stores the selected Tempdrop records in your private Firebase account for cross-device backup. This choice is separate from Apple Health permission and applies to this device and account. Turning it off stops future imports; it does not remove saved records.</p>
+      {!tools.canSync && <p>Sign in and select private cloud data to enable imports. Inspection is still available in the iOS app.</p>}
+      <p role="status">{tools.message}</p>
+      <p>HealthKit: {tools.status ? tools.status.available ? "available" : "unavailable" : "checking…"}. Last successful import: {tools.lastImport ? new Date(tools.lastImport).toLocaleString() : "never"}. Pending on this device: {tools.pending}.</p>
       <div>
-        <button className="header-action" disabled={busy} onClick={() => void refresh()}>Refresh status</button>{" "}
-        <button className="header-action" disabled={busy || status?.available !== true} onClick={() => void authorize()}>Request read permissions</button>{" "}
-        <button className="header-action" disabled={busy || status?.available !== true} onClick={() => void inspect()}>Inspect last 90 days</button>
+        <button className="header-action" disabled={busy} onClick={() => void tools.act("status")}>Refresh status</button>{" "}
+        <button className="header-action" disabled={busy || !tools.status?.available} onClick={() => void tools.act("permissions")}>Request read permissions</button>{" "}
+        <button className="header-action" disabled={busy || !tools.status?.available} onClick={() => void tools.act("inspect")}>Inspect last 90 days</button>{" "}
+        <button className="header-action" disabled={busy || !tools.enabled || !tools.canSync || !tools.status?.available} onClick={() => void tools.act("import")}>Import recent Health data</button>{" "}
+        <button className="header-action" disabled={busy || !tools.enabled || !tools.pending} onClick={() => void tools.act("retry")}>Retry pending import</button>
       </div>
-      {status && <ul><li>HealthKit read authorization is not exposed per type by Apple; no-record results cannot distinguish denial from an empty store.</li>{status.requestedTypes.map(type => <li key={type.identifier}>{type.displayName}: {type.available ? "requested type available" : "not available on this OS"}</li>)}</ul>}
-      <p><strong>Recent normalized records:</strong> {records.length || "none"}</p>
-      {records.length > 0 && <div>{records.slice().reverse().map(record => <details key={record.id}><summary>{record.localDate} · {record.metric} · {record.provenance.provider}</summary><pre style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>{JSON.stringify(record, null, 2)}</pre></details>)}</div>}
+      {report && <div>
+        <p>Found: {report.found} · new: {report.new} · already imported: {report.alreadyImported} · updated: {report.updated} · skipped: {report.skipped} · superseded: {report.superseded}.</p>
+        {tools.result?.state !== "synced" && <p>These are candidate counts; cloud reconciliation is complete only after a successful import.</p>}
+        <p>Providers: {Object.entries(report.providers).map(([name, count]) => `${name}: ${count}`).join(" · ") || "none"}.</p>
+        <p>Metrics: {Object.entries(report.metrics).map(([name, count]) => `${name}: ${count}`).join(" · ") || "none"}.</p>
+      </div>}
+      <details><summary>Testing / development · HealthKit inspection</summary>
+        <p>Apple does not expose read authorization per category. An empty query cannot distinguish denied or limited permission from an empty Health store. Query results shown here stay on this device.</p>
+        <ul>{tools.status?.requestedTypes.map(type => <li key={type.identifier}>{type.displayName}: {type.available ? "type supported" : "type unavailable"}</li>)}</ul>
+        {tools.result?.records.slice().reverse().map(record => <details key={record.id}><summary>{record.localDate} · {record.metric} · {record.provenance.provider}</summary><pre style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>{JSON.stringify(record, null, 2)}</pre></details>)}
+      </details>
     </details>
   </section>;
 }

@@ -4,6 +4,7 @@ import { initializeFirestore, memoryLocalCache, getDocFromServer, getDocsFromSer
 import type { CloudGateway } from "../../services/cloud-session";
 import { createFirebaseRepository, type FirestorePort } from "./repository";
 import type { FirebaseConfiguration } from "./config";
+import { healthKitImportState } from "../local/healthkit-import-state";
 
 export function connectFirebase(configuration: FirebaseConfiguration): CloudGateway {
   if (!configuration.enabled) throw new Error("Firebase is disabled; configure it before signing in");
@@ -21,7 +22,7 @@ export function connectFirebase(configuration: FirebaseConfiguration): CloudGate
     currentUid: () => auth.currentUser?.uid ?? null,
     async read(path) { const snapshot = await getDocFromServer(doc(db, path)); return snapshot.exists() ? snapshot.data() : null; },
     async list(path) { const snapshot = await getDocsFromServer(collection(db, path)); return snapshot.docs.map(document => ({ id: document.id, data: document.data() })); },
-    async commit(path, expected, writes) {
+    async commit(path, expected, writes, authorize) {
       const uid = auth.currentUser?.uid;
       if (!uid) throw new Error("Authentication required");
       await runTransaction(db, async transaction => {
@@ -30,6 +31,7 @@ export function connectFirebase(configuration: FirebaseConfiguration): CloudGate
         const actual = snapshot.exists() ? snapshot.data().record?.revision : 0;
         if (actual !== expected) throw new Error("Cloud revision conflict; reload before editing");
         if (auth.currentUser?.uid !== uid) throw new Error("Authentication changed during the write");
+        authorize?.();
         for (const write of writes) transaction.set(doc(db, write.path), write.data);
       });
     },
@@ -38,6 +40,6 @@ export function connectFirebase(configuration: FirebaseConfiguration): CloudGate
     signIn: async (email, password) => { await signInWithEmailAndPassword(auth, email, password); },
     signOut: () => signOut(auth),
     observe: callback => onAuthStateChanged(auth, user => callback(user ? { uid: user.uid, email: user.email } : null)),
-    repository: uid => createFirebaseRepository(port, uid),
+    repository: uid => createFirebaseRepository(port, uid, { healthKitConsent: () => healthKitImportState.consent(uid) }),
   };
 }

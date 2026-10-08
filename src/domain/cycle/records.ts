@@ -2,8 +2,8 @@ import type { CycleDayLog, CycleLog } from "./types";
 import { createRecordId } from "../ids";
 
 /** Defaults support the existing controls, but are not recorded observations. */
-export function createCycleDraft(date: string): CycleDayLog {
-  return { id: createRecordId(), date, flow: "None", cycleDayOne: false, recordOrigin: "user", recordedFields: [], temperatureSource: "Manual", questionableTemperature: false, cervicalMucus: "None / dry", mucusSensation: "Dry", cervixPosition: "Medium", cervixFirmness: "Medium", cervixOpening: "Medium", ovulationTest: "Not tested", pregnancyTest: "Not tested", intercourse: false, symptoms: [], energy: 50, sexDrive: 50, pms: 0, disturbances: [] };
+export function createCycleDraft(date: string, id = createRecordId()): CycleDayLog {
+  return { id, date, flow: "None", cycleDayOne: false, recordOrigin: "user", recordedFields: [], temperatureSource: "Manual", questionableTemperature: false, cervicalMucus: "None / dry", mucusSensation: "Dry", cervixPosition: "Medium", cervixFirmness: "Medium", cervixOpening: "Medium", ovulationTest: "Not tested", pregnancyTest: "Not tested", intercourse: false, symptoms: [], energy: 50, sexDrive: 50, pms: 0, disturbances: [] };
 }
 
 export function updateCycleField<K extends keyof CycleDayLog>(current: CycleDayLog, key: K, value: CycleDayLog[K]): CycleDayLog {

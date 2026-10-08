@@ -25,6 +25,7 @@ export type HealthRecord = {
   };
   status: "recorded" | "questionable" | "estimated" | "legacy-unverified" | "superseded" | "deleted";
   confidence?: { level: "unknown" | "low" | "medium" | "high"; reason?: string };
+  displayOverride?: boolean;
   createdAt: string;
   updatedAt: string;
 };

@@ -66,8 +66,9 @@ export function createCloudSession(connect: () => Promise<CloudGateway>, { cloud
       const selected: DataRepository = {
         async load(widgets) {
           guard();
+          if (pending) throw new Error("Wait for pending cloud writes before reloading");
           update({ save: "pending", operation: "loading", error: "" });
-          try { const data = await base.load(widgets); guard(); update({ save: "synced", operation: null }); return data; }
+          try { const data = await base.load(widgets); guard(); queue = Promise.resolve(); update({ save: "synced", operation: null }); return data; }
           catch (error) { if (captured === generation) update({ save: "failed", operation: null, error: failure(error, true) }); throw error; }
         },
         save: (key, value) => selected.saveMany({ [key]: value }),

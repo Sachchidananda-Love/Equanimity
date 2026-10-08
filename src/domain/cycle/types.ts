@@ -8,7 +8,9 @@ export type CycleDayLog = {
   cycleDayOne: boolean;
   temperature?: number;
   temperatureSource: "Manual" | "Tempdrop" | "Oral" | "Vaginal";
-  recordOrigin?: "user" | "legacy-unverified" | "sample";
+  temperatureDisplayOverride?: boolean;
+  recordOrigin?: "user" | "legacy-unverified" | "sample" | "health-summary";
+  healthSourceRecordIds?: Record<string, string[]>;
   recordedFields?: string[];
   questionableTemperature: boolean;
   cervicalMucus: "None / dry" | "Sticky" | "Creamy" | "Watery" | "Egg white";

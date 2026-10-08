@@ -2,15 +2,47 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 import { initializeTestEnvironment, assertFails, assertSucceeds } from "@firebase/rules-unit-testing";
-import { doc, setDoc, getDoc, getDocs, collection, deleteDoc } from "firebase/firestore";
+import { doc, setDoc, getDoc, getDocs, collection, deleteDoc, runTransaction } from "firebase/firestore";
 import { deleteApp } from "firebase/app";
 import { connectFirebase } from "../src/adapters/firebase/client.ts";
 import { createCycleDraft, updateCycleField } from "../src/domain/cycle/records.ts";
 import { manualHealthRecords } from "../src/services/health-service.ts";
 import { exerciseCloudCrud } from "./helpers/cloud-crud.mjs";
 import { createCloudSession } from "../src/services/cloud-session.ts";
+import { createFirebaseRepository, cloudRecordId } from "../src/adapters/firebase/repository.ts";
+import { normalizeHealthKitRecords } from "../src/adapters/healthkit.ts";
+import { reconcileHealthKitRecords } from "../src/services/healthkit-import-service.ts";
+import { healthKitSample, timestamp } from "./helpers/healthkit-fixtures.mjs";
 
 const projectId="demo-yi-phase3a";
+test("reviewed HealthKit records require consent and round-trip under actual UID rules", async () => {
+  assert.ok(process.env.FIRESTORE_EMULATOR_HOST);
+  const env = await initializeTestEnvironment({ projectId, firestore: { rules: await readFile(new URL("../firestore.rules", import.meta.url), "utf8"), host: "127.0.0.1", port: 8080 } });
+  const uid = "health-import-owner";
+  try {
+    await env.withSecurityRulesDisabled(context => setDoc(doc(context.firestore(), `privateAccess/${uid}`), { enabled: true }));
+    const db = env.authenticatedContext(uid).firestore(); let consent = false;
+    const port = {
+      currentUid: () => uid,
+      read: async path => { const result = await getDoc(doc(db, path)); return result.exists() ? result.data() : null; },
+      list: async path => (await getDocs(collection(db, path))).docs.map(row => ({ id: row.id, data: row.data() })),
+      commit: (path, expected, writes, authorize) => runTransaction(db, async transaction => {
+        const revision = await transaction.get(doc(db, path)); assert.equal(revision.data()?.record.revision ?? 0, expected);
+        authorize?.(); for (const write of writes) transaction.set(doc(db, write.path), write.data);
+      }),
+    };
+    const repository = createFirebaseRepository(port, uid, { healthKitConsent: () => consent }); await repository.load([]);
+    const imported = reconcileHealthKitRecords([], normalizeHealthKitRecords([healthKitSample()], timestamp), timestamp).records;
+    await assert.rejects(repository.save("health", imported), /disabled/);
+    consent = true; await repository.save("health", imported);
+    const reloaded = await createFirebaseRepository(port, uid).load([]);
+    assert.deepEqual(reloaded.health, JSON.parse(JSON.stringify(imported)));
+    const path = `users/${uid}/healthRecords/${cloudRecordId(imported[0].id)}`;
+    assert.equal((await getDoc(doc(db, path))).data().ownerUid, uid);
+    await assertFails(getDoc(doc(env.authenticatedContext("another-owner").firestore(), path)));
+    await assertFails(getDoc(doc(env.unauthenticatedContext().firestore(), path)));
+  } finally { await env.cleanup(); }
+});
 test("real Firestore rules deny anonymous, foreign UID and unapproved accounts",async()=>{
   assert.ok(process.env.FIRESTORE_EMULATOR_HOST,"Run via the emulator test command, never against a live project");
   const env=await initializeTestEnvironment({projectId,firestore:{rules:await readFile(new URL("../firestore.rules",import.meta.url),"utf8"),host:"127.0.0.1",port:8080}});

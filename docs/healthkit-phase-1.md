@@ -1,5 +1,7 @@
 # HealthKit phase 1: read-only inspection
 
+Historical phase-1 report. The reviewed, consent-gated import workflow now supersedes the session-only behavior below; see [HealthKit phase 2](healthkit-import-phase-2.md) for the current policy, implementation and phone test procedure. Inspection itself remains session-only.
+
 This phase adds a native iOS HealthKit bridge for Equanimity. It requests read access only for basal body temperature, sleep analysis, menstrual flow, cervical mucus quality, ovulation test results, and sexual activity (the existing app has an intercourse field). It does not write HealthKit data, call Tempdrop directly, schedule background work, or upload HealthKit records.
 
 The native bridge is `ios/App/App/EquanimityHealthKitPlugin.swift`. The TypeScript boundary is `src/adapters/healthkit.ts`, and normalized records use the existing `HealthRecord` model with `provenance.ingestion = "healthkit"`, the HealthKit sample UUID in `originalSourceId`, and a stable `healthkit:<uuid>` record ID. The temporary panel is rendered by `src/application/HealthKitTools.tsx` near the bottom of the main app and is labelled “Testing / development · HealthKit inspection”. Its records remain React/session state only.

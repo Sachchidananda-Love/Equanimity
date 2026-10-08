@@ -161,6 +161,7 @@ final class EquanimityHealthKitPlugin: CAPPlugin, CAPBridgedPlugin {
         let sourceRevision = sample.sourceRevision
         let source = sourceRevision.source
         let sourceBundleIdentifier = source.bundleIdentifier
+        let sampleTimeZone = (sample.metadata?[HKMetadataKeyTimeZone] as? String).flatMap { TimeZone(identifier: $0) } ?? TimeZone.current
         var metadata: [String: String] = [:]
         sample.metadata?.forEach { key, value in
             metadata["healthkit.\(key)"] = String(describing: value)
@@ -180,8 +181,8 @@ final class EquanimityHealthKitPlugin: CAPPlugin, CAPBridgedPlugin {
             "sampleType": definition.displayName,
             "startDate": iso8601(sample.startDate),
             "endDate": iso8601(sample.endDate),
-            "localDate": localDate(sample.startDate),
-            "timeZone": TimeZone.current.identifier,
+            "localDate": localDate(sample.startDate, timeZone: sampleTimeZone),
+            "timeZone": sampleTimeZone.identifier,
             "source": sourceMetadata,
             "metadata": metadata,
         ]
@@ -231,7 +232,6 @@ final class EquanimityHealthKitPlugin: CAPPlugin, CAPBridgedPlugin {
             case 3: label = "medium"
             case 4: label = "heavy"
             case 5: label = "none"
-            case 6: label = "spotting"
             default: label = "menstrual-flow-\(value)"
             }
         } else if identifier == HKCategoryTypeIdentifier.cervicalMucusQuality.rawValue {
@@ -270,11 +270,11 @@ final class EquanimityHealthKitPlugin: CAPPlugin, CAPBridgedPlugin {
         return formatter.string(from: date)
     }
 
-    private func localDate(_ date: Date) -> String {
+    private func localDate(_ date: Date, timeZone: TimeZone) -> String {
         let formatter = DateFormatter()
         formatter.calendar = Calendar(identifier: .gregorian)
         formatter.locale = Locale(identifier: "en_CA")
-        formatter.timeZone = TimeZone.current
+        formatter.timeZone = timeZone
         formatter.dateFormat = "yyyy-MM-dd"
         return formatter.string(from: date)
     }
