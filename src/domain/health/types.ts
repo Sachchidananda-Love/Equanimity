@@ -20,6 +20,8 @@ export type HealthRecord = {
     sourceDeviceId?: string;
     importBatchId?: string;
     method?: string;
+    metadata?: Record<string, string>;
+    storage?: "local-session-inspection" | "repository" | "cloud";
   };
   status: "recorded" | "questionable" | "estimated" | "legacy-unverified" | "superseded" | "deleted";
   confidence?: { level: "unknown" | "low" | "medium" | "high"; reason?: string };

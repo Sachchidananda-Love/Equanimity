@@ -119,7 +119,7 @@ h3 { font-family:Iowan Old Style,Palatino Linotype,Georgia,serif; font-weight:50
 .dashboard-grid .expandable-widget { user-select:none; -webkit-user-select:none; }
 .dashboard-grid.editing .drag-widget-handle { pointer-events:auto; cursor:grab; touch-action:none; }
 .dashboard-shortcut { width:100%; min-height:170px; }
-.dashboard-widget.dragging { z-index:50; opacity:.98; transform:translate3d(var(--drag-x,0),var(--drag-y,0),0) scale(1.035) rotate(.25deg); filter:drop-shadow(0 22px 24px rgba(28,42,35,.2)); transition:filter .18s,opacity .18s; cursor:grabbing; will-change:transform; }
+.dashboard-widget.dragging { z-index:50; opacity:.98; transform:translate3d(var(--drag-x,0),var(--drag-y,0),0) scale(1) rotate(0deg); filter:drop-shadow(0 22px 24px rgba(28,42,35,.2)); transition:filter .18s,opacity .18s; cursor:grabbing; will-change:transform; }
 .dashboard-grid.editing .dashboard-widget:not(.dragging) { will-change:transform; }
 .dashboard-insight-characteristics,.dashboard-insight-hindrances { grid-column:span 2; }
 
@@ -335,6 +335,7 @@ section[aria-live="polite"] { display:none; }
   .dashboard-grid .dashboard-summary-time,
   .dashboard-grid .dashboard-summary-journal,
   .dashboard-grid .dashboard-summary-days,
+  .dashboard-grid .dashboard-log-activity,
   .dashboard-grid .dashboard-log-book,
   .dashboard-grid .dashboard-cycle-checkin,
   .dashboard-grid .dashboard-quick-reflection,
@@ -342,11 +343,11 @@ section[aria-live="polite"] { display:none; }
   .dashboard-grid .dashboard-summary-time,
   .dashboard-grid .dashboard-summary-journal,
   .dashboard-grid .dashboard-summary-days,
+  .dashboard-grid .dashboard-log-activity,
   .dashboard-grid .dashboard-log-book,
   .dashboard-grid .dashboard-cycle-checkin,
   .dashboard-grid .dashboard-quick-reflection,
   .dashboard-grid .dashboard-quick-prompt { width:100%; min-width:0; }
-  .dashboard-grid .dashboard-widget.dragging { grid-column:span 2!important; }
   .assessment-chart canvas,.practice-rhythm-chart,.activity-history-chart { max-width:100%; }
   .cycle-tracking-chart svg { max-width:100%; overflow:hidden; }
   .duration-chips:has(+ .custom-duration) button.active:not(:last-child) { background:transparent; border-color:var(--line); color:var(--muted); }

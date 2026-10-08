@@ -18,11 +18,12 @@ test("Capacitor packages are pinned together; prepare stops on build or sync fai
   const all = { ...pkg.dependencies, ...pkg.devDependencies };
   for (const name of ["@capacitor/android", "@capacitor/push-notifications", "@capacitor-firebase/authentication"]) assert.equal(all[name], undefined);
 });
-test("native project is SPM-only, uses web Firebase and does not weaken transport security", async () => {
-  const [swift, plist, project, ignore] = await Promise.all([read("ios/App/CapApp-SPM/Package.swift"), read("ios/App/App/Info.plist"), read("ios/App/App.xcodeproj/project.pbxproj"), read(".gitignore")]);
+test("native project is SPM-only, uses web Firebase, and declares read-only HealthKit safely", async () => {
+  const [swift, plist, project, entitlements, ignore] = await Promise.all([read("ios/App/CapApp-SPM/Package.swift"), read("ios/App/App/Info.plist"), read("ios/App/App.xcodeproj/project.pbxproj"), read("ios/App/App/App.entitlements"), read(".gitignore")]);
   assert.match(swift, /exact: "8\.5\.2"/); assert.match(plist, /<string>Equanimity<\/string>/);
   assert.equal((project.match(/IPHONEOS_DEPLOYMENT_TARGET = 15\.4;/g) ?? []).length, 4);
-  assert.doesNotMatch(swift + plist + project, /firebase-ios-sdk|GoogleService-Info|HealthKit|Tempdrop|aps-environment|NSAllowsArbitraryLoads|UIBackgroundModes/);
+  assert.match(plist, /NSHealthShareUsageDescription/); assert.match(entitlements, /com\.apple\.developer\.healthkit/); assert.match(project, /HealthKit\.framework/);
+  assert.doesNotMatch(swift + plist + project, /firebase-ios-sdk|GoogleService-Info|Tempdrop|aps-environment|NSAllowsArbitraryLoads|UIBackgroundModes/);
   assert.match(ignore, /\/ios\/App\/App\/public\//); assert.doesNotMatch(ignore, /^\/ios\/$/m);
 });
 test("synced native asset bundle is complete and identical to dist-mobile", async () => {

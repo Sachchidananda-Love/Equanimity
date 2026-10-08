@@ -15,6 +15,12 @@ export async function verifyIosShell() {
   assert.match(project, /win\.calemandersonbar\.equanimity/); assert.match(project, /CapApp-SPM/);
   const swift = await readFile(new URL("ios/App/CapApp-SPM/Package.swift", root), "utf8");
   assert.match(swift, /capacitor-swift-pm/); assert.doesNotMatch(swift, /firebase|HealthKit|Tempdrop/i);
+  const entitlements = await readFile(new URL("ios/App/App/App.entitlements", root), "utf8");
+  const plist = await readFile(new URL("ios/App/App/Info.plist", root), "utf8");
+  assert.match(entitlements, /com\.apple\.developer\.healthkit/);
+  assert.match(plist, /NSHealthShareUsageDescription/);
+  assert.match(project, /CODE_SIGN_ENTITLEMENTS = App\/App\.entitlements/);
+  assert.match(project, /HealthKit\.framework/);
   await access(new URL("ios/App/App/Info.plist", root));
   const hash = bytes => createHash("sha256").update(bytes).digest("hex");
   const files = await verifyIosWeb();
