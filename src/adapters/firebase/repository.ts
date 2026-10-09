@@ -35,12 +35,19 @@ function validate(data: AppData) {
 }
 
 /** Stores validated observations, not domain calculations; never reads localStorage. */
-export function createFirebaseRepository(port: FirestorePort, uid: string, { healthKitConsent = () => false }: { healthKitConsent?: () => boolean } = {}): CloudBaselineRepository {
+export function createFirebaseRepository(port: FirestorePort, uid: string, { healthKitConsent = () => false, cachedUid = () => null }: { healthKitConsent?: () => boolean; cachedUid?: () => string | null } = {}): CloudBaselineRepository {
   if (!uid || uid.includes("/")) throw new Error("Invalid Firebase UID");
   const root = `users/${uid}`; const revisionPath = `${root}/settings/repository`;
   let baseline: AppData | undefined; let revision = 0;
   let existingCollections = new Set<string>();
   const guard = () => { if (port.currentUid() !== uid) throw new Error("Authenticated UID does not own this repository"); };
+  // Local cache validation/projection is not a Firestore operation. Only the
+  // previously granted device account may restore while Auth is unresolved.
+  // A known different Firebase user always closes this path, even with a grant.
+  const guardCache = () => {
+    const authenticated = port.currentUid();
+    if (authenticated !== uid && !(authenticated === null && cachedUid() === uid)) throw new Error("Device account does not own this cache");
+  };
   function unwrap(value: unknown) {
     if (!object(value) || value.ownerUid !== uid || value.schemaVersion !== 1 || typeof value.deleted !== "boolean" || !object(value.record)) throw new Error("Malformed or foreign cloud record; writes blocked");
     return value;
@@ -128,12 +135,12 @@ export function createFirebaseRepository(port: FirestorePort, uid: string, { hea
   return {
     load, save: (key, value) => saveMany({ [key]: value }), saveMany,
     commitQueued: (changes, mutationId) => saveMany(changes, mutationId),
-    validateChanges(changes) { guard(); if (!baseline) throw new Error("Load cloud records successfully before writing"); validate(clean({ ...baseline, ...changes })); },
-    exportBaseline() { guard(); if (!baseline) throw new Error("No cloud baseline"); return structuredClone({ data: baseline, revision, collections: [...existingCollections] }); },
+    validateChanges(changes) { guardCache(); if (!baseline) throw new Error("Load cloud records successfully before writing"); validate(clean({ ...baseline, ...changes })); },
+    exportBaseline() { guardCache(); if (!baseline) throw new Error("No cloud baseline"); return structuredClone({ data: baseline, revision, collections: [...existingCollections] }); },
     restoreBaseline(state) {
       const finish = lifecycleSpan("cached baseline restore");
       try {
-        guard(); validate(state.data);
+        guardCache(); validate(state.data);
         if (!Number.isSafeInteger(state.revision) || state.revision < 0 || !Array.isArray(state.collections) || state.collections.some(name => ![...Object.values(collections), "cycleEvents", "settings"].includes(name))) throw new Error("Invalid cloud cache baseline");
         baseline = clean(state.data); revision = state.revision; existingCollections = new Set(state.collections);
       } finally { finish(); }

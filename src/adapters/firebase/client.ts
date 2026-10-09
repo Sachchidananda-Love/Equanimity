@@ -8,8 +8,9 @@ import { healthKitImportState } from "../local/healthkit-import-state";
 import { createIndexedDbSyncStore } from "./sync-store";
 import { createCloudSyncRepository } from "../../services/cloud-sync";
 import { lifecycleLog, lifecycleSpan } from "../../platform/lifecycle-log";
+import type { createDeviceCloudRecovery } from "./device-recovery";
 
-export function connectFirebase(configuration: FirebaseConfiguration): CloudGateway {
+export function connectFirebase(configuration: FirebaseConfiguration, recovery?: ReturnType<typeof createDeviceCloudRecovery>): CloudGateway {
   lifecycleLog("Firebase initialization started");
   if (!configuration.enabled) throw new Error("Firebase is disabled; configure it before signing in");
   const app = initializeApp(configuration.options, "yi-private-cloud");
@@ -49,15 +50,17 @@ export function connectFirebase(configuration: FirebaseConfiguration): CloudGate
       });
     },
   };
+  recovery?.attach(port);
   lifecycleLog("Firebase initialization completed");
   return {
-    signIn: async (email, password) => { await signInWithEmailAndPassword(auth, email, password); },
+    signIn: async (email, password) => { const result = await signInWithEmailAndPassword(auth, email, password); return { uid: result.user.uid, email: result.user.email }; },
     signOut: () => signOut(auth),
     observe: callback => {
       lifecycleLog("Firebase auth listener attached");
       return onAuthStateChanged(auth, user => callback(user ? { uid: user.uid, email: user.email } : null));
     },
     repository: uid => {
+      if (recovery) return recovery.repository(uid);
       const repository = createFirebaseRepository(port, uid, { healthKitConsent: () => healthKitImportState.consent(uid) });
       // Node/emulator consumers have no WKWebView IndexedDB device cache.
       return typeof window === "undefined" ? repository : createCloudSyncRepository(repository, uid, syncStore);

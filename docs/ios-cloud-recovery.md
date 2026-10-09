@@ -1,5 +1,7 @@
 # iOS cloud recovery — 2026-10-08
 
+> Offline cache selection no longer waits for restored Firebase authentication. See [iOS offline account relaunch](ios-offline-relaunch.md) for the subsequent device-session grant, safe sign-out and physical-phone test. The cache/outbox engine described here is reused unchanged.
+
 Implemented non-blocking auth/repository hydration and background cloud recovery. Automated verification passed; Tatiana's physical-iPhone acceptance is still required. No claim is made that the intermittent device stall has been profiled or completely eliminated on that phone.
 
 ## Root causes found
