@@ -14,6 +14,33 @@ async function render() {
   );
 }
 
+test("native sliders have full-size touch targets without expanding the visible knobs", async () => {
+  const [css, globalCss, page] = await Promise.all([
+    readFile(new URL("../src/application/sliders.css", import.meta.url), "utf8"),
+    readFile(new URL("../app/globals.css", import.meta.url), "utf8"),
+    readFile(new URL("../app/YiApp.tsx", import.meta.url), "utf8"),
+  ]);
+  assert.match(globalCss, /@import "\.\.\/src\/application\/sliders\.css"/);
+  for (const selector of ['.sliders input[type="range"]', '.cycle-scales input[type="range"]', '.gong-range[type="range"]']) {
+    assert.ok(css.includes(selector), `${selector} should share the touch-target styles`);
+  }
+  const inputStyles = css.match(/\.gong-range\[type="range"\] \{([^}]+)\}/)?.[1] ?? "";
+  assert.match(inputStyles, /height: 44px;/);
+  assert.match(inputStyles, /min-height: 44px;/);
+  assert.match(inputStyles, /touch-action: pan-y pinch-zoom;/);
+  assert.match(inputStyles, /padding: 0;/);
+  assert.match(inputStyles, /border: 0;/);
+  assert.match(inputStyles, /accent-color: var\(--sage-dark\);/);
+  assert.doesNotMatch(css, /appearance: none|slider-thumb|slider-runnable-track|moz-range/, "Slider visuals should remain browser-native");
+  // All four controls retain the same native range underneath the track enhancement.
+  assert.equal((page.match(/<RangeInput\b/g) ?? []).length, 4);
+  assert.equal((page.match(/<RangeInput[^>]+onValueChange=/g) ?? []).length, 4);
+  const range = await readFile(new URL("../src/application/RangeInput.tsx", import.meta.url), "utf8");
+  assert.match(range, /type="range"/);
+  assert.match(range, /onChange=/);
+  assert.doesNotMatch(range, /preventDefault|touch-action/);
+});
+
 test("server-renders the configured cloud sign-in boundary or local Yi experience", async () => {
   const response = await render();
   assert.equal(response.status, 200);
@@ -25,7 +52,9 @@ test("server-renders the configured cloud sign-in boundary or local Yi experienc
     assert.match(html, /Private cloud data is closed/);
     assert.match(html, /type="password"/);
     assert.match(html, /Use local-only development\/fallback data/);
-    assert.doesNotMatch(html, /Your wellbeing|Meditation timer|Body &amp; cycle check-in/);
+    assert.match(html, /Your wellbeing/);
+    assert.match(html, /Meditation timer/);
+    assert.doesNotMatch(html, /\sinert(?:=|\s|>)/);
     return;
   }
   assert.match(html, /Your wellbeing/);

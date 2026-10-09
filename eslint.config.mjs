@@ -37,6 +37,9 @@ const eslintConfig = defineConfig([
       },
     },
     settings: {
+      "jsx-a11y": {
+        components: { RangeInput: "input" },
+      },
       react: {
         version: "detect",
       },

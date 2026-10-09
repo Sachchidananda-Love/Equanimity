@@ -29,3 +29,12 @@ test("native project is SPM-only, uses web Firebase, and declares read-only Heal
 test("synced native asset bundle is complete and identical to dist-mobile", async () => {
   await verifyIosShell();
 });
+
+test("native launch diagnostics are DEBUG-only and installed before the web entry loads", async () => {
+  const swift = await read("ios/App/App/EquanimityBridgeViewController.swift");
+  assert.match(swift, /#if DEBUG[\s\S]*__EQUANIMITY_LIFECYCLE_DEBUG__[\s\S]*#endif/);
+  assert.match(swift, /injectionTime: \.atDocumentStart, forMainFrameOnly: true/);
+  assert.match(swift, /\[Equanimity native diag\]/); assert.match(swift, /beats == 60/);
+  assert.match(swift, /RunLoop\.main\.add\(diagnosticTimer, forMode: \.common\)/);
+  assert.equal((swift.match(/registerPluginInstance\(EquanimityHealthKitPlugin\(\)\)/g) ?? []).length, 1);
+});

@@ -6,6 +6,7 @@ import { createHealthKitImportService, healthKitInspectionService } from "../ser
 import type { HealthImportResult } from "../services/healthkit-import-service";
 import type { HealthKitStatus } from "../adapters/healthkit";
 import type { AppData, DataRepository } from "../services/repository-contracts";
+import { lifecycleMeasure, lifecycleSpan } from "../platform/lifecycle-log";
 
 export function useHealthKitImport({ uid, repository, onImported, onBusy }: {
   uid?: string; repository?: DataRepository; onImported: (data: AppData) => void; onBusy: (busy: boolean) => void;
@@ -24,10 +25,12 @@ export function useHealthKitImport({ uid, repository, onImported, onBusy }: {
   useEffect(() => {
     let mounted = true;
     void Promise.resolve().then(async () => {
-      const next = await healthKitInspectionService.status();
+      const finish = lifecycleSpan("Health availability");
+      let next;
+      try { next = await healthKitInspectionService.status(); } finally { finish(); }
       if (!mounted) return;
       setStatus(next); setMessage(next.message);
-      if (service) { setEnabled(service.consent()); setPending(service.pendingCount()); setLastImport(service.lastImport()); }
+      if (service) lifecycleMeasure("Health import status checkpoint", () => { setEnabled(service.consent()); setPending(service.pendingCount()); setLastImport(service.lastImport()); });
     }).catch(() => { if (mounted) setMessage("Could not read Apple Health import status. Existing data and device checkpoints are retained."); });
     return () => { mounted = false; };
   }, [service]);

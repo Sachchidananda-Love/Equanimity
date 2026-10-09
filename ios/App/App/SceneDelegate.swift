@@ -4,6 +4,14 @@ import Capacitor
 class SceneDelegate: UIResponder, UIWindowSceneDelegate {
     var window: UIWindow?
 
+    private func reportActivity(_ active: Bool) {
+        guard let controller = window?.rootViewController as? CAPBridgeViewController else { return }
+        controller.webView?.evaluateJavaScript("window.dispatchEvent(new CustomEvent('equanimity:app-state', { detail: { active: \(active ? "true" : "false") } }));", completionHandler: nil)
+    }
+
+    func sceneDidBecomeActive(_ scene: UIScene) { reportActivity(true) }
+    func sceneDidEnterBackground(_ scene: UIScene) { reportActivity(false) }
+
     func scene(_ scene: UIScene, willConnectTo session: UISceneSession, options connectionOptions: UIScene.ConnectionOptions) {
         guard let windowScene = scene as? UIWindowScene else { return }
 

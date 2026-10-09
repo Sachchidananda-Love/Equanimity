@@ -1,0 +1,21 @@
+/* Preserve the original native slider appearance while making the control's
+   invisible touch box easier to catch with a finger. */
+.sliders input[type="range"],
+.cycle-scales input[type="range"],
+.gong-range[type="range"] {
+  display: block;
+  width: 100%;
+  min-width: 44px;
+  height: 44px;
+  min-height: 44px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  accent-color: var(--sage-dark);
+  cursor: pointer;
+  /* Let WebKit handle vertical scroll starts, including inside the touch box.
+     Horizontal adjustment remains the native range control's responsibility. */
+  touch-action: pan-y pinch-zoom;
+}

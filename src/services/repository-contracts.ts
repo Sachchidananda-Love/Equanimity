@@ -19,6 +19,23 @@ export interface DataRepository {
   load(defaultWidgets: string[]): AppData | Promise<AppData>;
   save<K extends keyof AppData>(dataset: K, value: AppData[K]): void | Promise<void>;
   saveMany(changes: Partial<AppData>): void | Promise<void>;
+  /** Cloud cache and outbox are separate from the explicit local repository. */
+  restore?(): Promise<AppData | null>;
+  enqueue?(changes: Partial<AppData>): Promise<void>;
+  refresh?(): Promise<void>;
+  subscribeData?(listener: (data: AppData) => void): () => void;
+  syncStatus?(): RepositorySyncStatus;
+  subscribeSync?(listener: () => void): () => void;
+  setOnline?(online: boolean): void;
+  dispose?(): void;
+}
+export type RepositorySyncStatus = { phase: "idle" | "loading" | "saving" | "offline" | "failed"; pending: number; error: string; writable: boolean };
+export type CloudBaseline = { data: AppData; revision: number; collections: string[] };
+export interface CloudBaselineRepository extends DataRepository {
+  exportBaseline(): CloudBaseline;
+  restoreBaseline(state: CloudBaseline): void;
+  validateChanges(changes: Partial<AppData>): void;
+  commitQueued(changes: Partial<AppData>, mutationId: string): Promise<void>;
 }
 export interface ApplicationRepository extends DataRepository {
   load(defaultWidgets: string[]): AppData;

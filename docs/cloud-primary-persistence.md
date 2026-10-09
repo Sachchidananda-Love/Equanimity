@@ -1,5 +1,7 @@
 # Cloud-primary persistence after Phase 3A
 
+> Historical phase report. Auth persistence was subsequently added in the iOS shell work. The global interaction gate, in-memory-only edits and reload/discard recovery described below are superseded by [iOS cloud recovery](ios-cloud-recovery.md). Cloud ownership, validation, consent and revision-conflict protections remain in force.
+
 Firestore is now the normal persistence path for authenticated real users when `VITE_FIREBASE_ENABLED=true`. This phase intentionally does **not** migrate local test/demo records. Local storage is retained only for explicit development/fallback use and device-local runtime state. No Capacitor, iOS project, HealthKit, Tempdrop, Storage, Analytics, live deployment, or live record manipulation was added.
 
 ## Current behavior

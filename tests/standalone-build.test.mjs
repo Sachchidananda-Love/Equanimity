@@ -30,7 +30,7 @@ test("standalone HTML owns its client entry, snapshot, viewport and local font C
   assert.match(entry,/createRoot\(root\)\.render/);assert.doesNotMatch(entry,/hydrateRoot|next\//);
   assert.equal((entry.match(/Date\.now\(\)/g)??[]).length,1);assert.match(entry,/<YiApp initialNow=\{initialNow\}/);
   const app=await readFile(new URL("../app/YiApp.tsx",import.meta.url),"utf8");
-  assert.match(app,/new Audio\(assetUrl\(/);assert.match(app,/image.src = assetUrl\(media.src\)/);assert.match(app,/video.src = assetUrl\(cubeVideo.src\)/);
+  assert.match(app,/playGong\(assetUrl\(/);assert.match(app,/image.src = assetUrl\(media.src\)/);assert.match(app,/video.src = assetUrl\(cubeVideo.src\)/);
   assert.doesNotMatch(app,/(?:image|video)\.src = (?:media|cubeVideo)\.src/);
   const files=await readdir(new URL("assets/",output));const css=(await read(`assets/${files.find(f=>f.endsWith(".css"))}`)).toString();
   assert.match(css,/@font-face/);assert.match(css,/100dvh/);assert.match(css,/safe-area-inset-top/);
@@ -80,6 +80,7 @@ test("standalone module graph has no server modules and blocks framework regress
   const modules=chunks.flatMap(chunk=>Object.keys(chunk.modules));
   assert.ok(modules.some(id=>id.endsWith("/app/YiApp.tsx")));
   assert.ok(modules.some(id=>id.endsWith("/src/adapters/local/repository.ts")));
+  assert.ok(modules.some(id=>id.endsWith("/src/platform/gong-player.ts")));
   assert.ok(modules.some(id=>id.endsWith("/src/services/health-service.ts")));
   assert.ok(!modules.some(id=>/\/node_modules\/(?:vinext|@cloudflare|@openai\/sites|react-server-dom)|\/app\/(?:layout|page|chatgpt-auth)\.|\/(?:worker|db)\//.test(id)),modules.join("\n"));
   const fixture = source => ({name:"boundary-regression-fixture",enforce:"pre",transform(code,id){if(id.endsWith("/mobile-web/main.tsx"))return `import ${JSON.stringify(source)};\n${code}`;}});

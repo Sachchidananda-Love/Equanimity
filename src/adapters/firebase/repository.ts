@@ -1,8 +1,9 @@
-import type { AppData, DataRepository } from "../../services/repository-contracts";
+import type { AppData, CloudBaselineRepository } from "../../services/repository-contracts";
 import { defaultAppData, emptyCycle } from "../local/repository";
 import { activityValid, bookValid, cycleValid, healthValid, journalValid, object, parseArray, timerValid } from "../local/validation";
 import { separateLegacySamples } from "../../migrations/legacy";
 import { HEALTHKIT_PERSISTED_METADATA, verifiedHealthKitRecord } from "../../domain/health/import-policy";
+import { lifecycleSpan } from "../../platform/lifecycle-log";
 
 export type CloudDocument = { id: string; data: unknown };
 export type CloudWrite = { path: string; data: Record<string, unknown> };
@@ -15,7 +16,7 @@ export interface FirestorePort {
 const collections = { journal: "journalEntries", timers: "timerPresets", activities: "activityPresets", books: "books", health: "healthRecords" } as const;
 export function cloudRecordId(id: string | number) { return `${typeof id === "number" ? "n" : "s"}-${encodeURIComponent(String(id))}`; }
 const clean = <T>(value: T): T => JSON.parse(JSON.stringify(value));
-function validate(data: AppData) {
+function validateData(data: AppData) {
   parseArray(data.journal, journalValid); parseArray(data.timers, timerValid); parseArray(data.activities, activityValid); parseArray(data.books, bookValid); parseArray(data.health, healthValid);
   if (!cycleValid(data.cycle) || !Array.isArray(data.widgets) || !data.widgets.every(id => typeof id === "string") || new Set(data.widgets).size !== data.widgets.length) throw new Error("Invalid cloud data; writes blocked");
   if (separateLegacySamples(data).review.length || data.cycle.history.some(record => record.recordOrigin !== "user")) throw new Error("Samples and unverified legacy health history cannot be uploaded");
@@ -28,9 +29,13 @@ function validate(data: AppData) {
   }
   scan(data);
 }
+function validate(data: AppData) {
+  const finish = lifecycleSpan("account validation");
+  try { validateData(data); } finally { finish(); }
+}
 
 /** Stores validated observations, not domain calculations; never reads localStorage. */
-export function createFirebaseRepository(port: FirestorePort, uid: string, { healthKitConsent = () => false }: { healthKitConsent?: () => boolean } = {}): DataRepository {
+export function createFirebaseRepository(port: FirestorePort, uid: string, { healthKitConsent = () => false }: { healthKitConsent?: () => boolean } = {}): CloudBaselineRepository {
   if (!uid || uid.includes("/")) throw new Error("Invalid Firebase UID");
   const root = `users/${uid}`; const revisionPath = `${root}/settings/repository`;
   let baseline: AppData | undefined; let revision = 0;
@@ -48,13 +53,13 @@ export function createFirebaseRepository(port: FirestorePort, uid: string, { hea
   }
   const envelope = (record: unknown, deleted = false) => clean({ schemaVersion: 1, ownerUid: uid, record, deleted });
   async function load(widgets: string[]): Promise<AppData> {
-    guard(); baseline = undefined;
+    guard();
     const before = revisionOf(await port.read(revisionPath)); guard();
     const sections = await Promise.all([...Object.values(collections), "cycleEvents", "settings"].map(async name => [name, await port.list(`${root}/${name}`)] as const)); guard();
     const after = revisionOf(await port.read(revisionPath)); guard();
     if (before !== after) throw new Error("Cloud changed while loading. Reload before editing");
     const map = Object.fromEntries(sections); const data = defaultAppData(widgets);
-    existingCollections = new Set(sections.filter(([, documents]) => documents.length > 0).map(([name]) => name));
+    const loadedCollections = new Set(sections.filter(([, documents]) => documents.length > 0).map(([name]) => name));
     function rows(name: string) {
       return map[name].flatMap(document => {
         const value = unwrap(document.data);
@@ -81,9 +86,9 @@ export function createFirebaseRepository(port: FirestorePort, uid: string, { hea
     // Collection queries sort by document ID, not by the UI's chronology.
     data.journal.sort((a, b) => (b.loggedAt ?? 0) - (a.loggedAt ?? 0));
     data.cycle.history.sort((a, b) => a.date.localeCompare(b.date));
-    revision = after; baseline = clean(data); return structuredClone(data);
+    revision = after; baseline = clean(data); existingCollections = loadedCollections; return structuredClone(data);
   }
-  async function saveMany(changes: Partial<AppData>) {
+  async function saveMany(changes: Partial<AppData>, mutationId?: string) {
     guard(); if (!baseline) throw new Error("Load cloud records successfully before writing");
     const next = clean({ ...baseline, ...changes }); validate(next);
     const writes: CloudWrite[] = [];
@@ -115,10 +120,23 @@ export function createFirebaseRepository(port: FirestorePort, uid: string, { hea
       }
     };
     if (writes.length > 400) throw new Error("Too many records changed in one operation (maximum 400). No partial write performed");
-    writes.push({ path: revisionPath, data: envelope({ revision: revision + 1 }) });
+    writes.push({ path: revisionPath, data: envelope({ revision: revision + 1, ...(mutationId ? { lastMutationId: mutationId } : {}) }) });
     authorize(); await port.commit(revisionPath, revision, writes, authorize); guard();
     writes.forEach(write => existingCollections.add(write.path.split("/")[2]));
     revision++; baseline = next;
   }
-  return { load, save: (key, value) => saveMany({ [key]: value }), saveMany };
+  return {
+    load, save: (key, value) => saveMany({ [key]: value }), saveMany,
+    commitQueued: (changes, mutationId) => saveMany(changes, mutationId),
+    validateChanges(changes) { guard(); if (!baseline) throw new Error("Load cloud records successfully before writing"); validate(clean({ ...baseline, ...changes })); },
+    exportBaseline() { guard(); if (!baseline) throw new Error("No cloud baseline"); return structuredClone({ data: baseline, revision, collections: [...existingCollections] }); },
+    restoreBaseline(state) {
+      const finish = lifecycleSpan("cached baseline restore");
+      try {
+        guard(); validate(state.data);
+        if (!Number.isSafeInteger(state.revision) || state.revision < 0 || !Array.isArray(state.collections) || state.collections.some(name => ![...Object.values(collections), "cycleEvents", "settings"].includes(name))) throw new Error("Invalid cloud cache baseline");
+        baseline = clean(state.data); revision = state.revision; existingCollections = new Set(state.collections);
+      } finally { finish(); }
+    },
+  };
 }

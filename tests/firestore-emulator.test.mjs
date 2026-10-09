@@ -13,8 +13,35 @@ import { createFirebaseRepository, cloudRecordId } from "../src/adapters/firebas
 import { normalizeHealthKitRecords } from "../src/adapters/healthkit.ts";
 import { reconcileHealthKitRecords } from "../src/services/healthkit-import-service.ts";
 import { healthKitSample, timestamp } from "./helpers/healthkit-fixtures.mjs";
+import { createCloudSyncRepository } from "../src/services/cloud-sync.ts";
 
 const projectId="demo-yi-phase3a";
+test("actual Firestore transaction retry after lost acknowledgement and restart is idempotent under owner rules", async () => {
+  assert.ok(process.env.FIREBASE_AUTH_EMULATOR_HOST); assert.ok(process.env.FIRESTORE_EMULATOR_HOST);
+  const response = await fetch("http://127.0.0.1:9099/identitytoolkit.googleapis.com/v1/accounts:signUp?key=fake-key", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email: "recovery-emulator@example.invalid", password: "throwaway-recovery-password", returnSecureToken: true }) });
+  assert.equal(response.status, 200); const identity = await response.json();
+  const env = await initializeTestEnvironment({ projectId, firestore: { rules: await readFile(new URL("../firestore.rules", import.meta.url), "utf8"), host: "127.0.0.1", port: 8080 } });
+  const values = new Map();
+  const store = { read: async uid => structuredClone(values.get(uid) ?? null), write: async (uid, value, expected) => { assert.equal(values.get(uid)?.version ?? 0, expected); values.set(uid, structuredClone(value)); } };
+  const gateway = connectFirebase({ enabled: true, emulators: true, options: { apiKey: "fake-key", authDomain: `${projectId}.firebaseapp.com`, projectId, appId: "fake-app-id" } });
+  let first, restarted;
+  try {
+    await env.withSecurityRulesDisabled(context => setDoc(doc(context.firestore(), `privateAccess/${identity.localId}`), { enabled: true }));
+    await gateway.signIn("recovery-emulator@example.invalid", "throwaway-recovery-password");
+    const base = gateway.repository(identity.localId); const commit = base.commitQueued;
+    base.commitQueued = async (...args) => { await commit(...args); throw Object.assign(new Error("offline"), { code: "unavailable" }); };
+    first = createCloudSyncRepository(base, identity.localId, store); await first.load([]);
+    const entry = { id: "lost-ack-emulator", type: "Journal", title: "Synthetic retry", date: "2026-10-08" };
+    await first.enqueue({ journal: [entry] }); await assert.rejects(first.refresh()); first.dispose();
+    restarted = createCloudSyncRepository(gateway.repository(identity.localId), identity.localId, store);
+    await restarted.restore(); await restarted.refresh();
+    assert.equal(restarted.syncStatus().pending, 0);
+    const reference = doc(env.authenticatedContext(identity.localId).firestore(), `users/${identity.localId}/settings/repository`);
+    assert.equal((await getDoc(reference)).data().record.revision, 1, "retry must not create a second transaction revision");
+    assert.equal((await gateway.repository(identity.localId).load([])).journal.length, 1);
+    await assertFails(getDoc(doc(env.authenticatedContext("other-owner").firestore(), `users/${identity.localId}/settings/repository`)));
+  } finally { first?.dispose(); restarted?.dispose(); await gateway.signOut(); await env.cleanup(); const { getApp } = await import("firebase/app"); await deleteApp(getApp("yi-private-cloud")); }
+});
 test("reviewed HealthKit records require consent and round-trip under actual UID rules", async () => {
   assert.ok(process.env.FIRESTORE_EMULATOR_HOST);
   const env = await initializeTestEnvironment({ projectId, firestore: { rules: await readFile(new URL("../firestore.rules", import.meta.url), "utf8"), host: "127.0.0.1", port: 8080 } });

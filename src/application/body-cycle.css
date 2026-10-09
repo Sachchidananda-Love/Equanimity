@@ -23,7 +23,7 @@
 .cycle-selected-summary small { display:block; margin-top:4px; color:var(--muted); font-size:8px; line-height:1.4; }
 .cycle-selected-summary button { flex:0 0 auto; min-height:32px; padding:6px; border:0; background:transparent; color:var(--sage-dark); font-size:9px; font-weight:700; }
 .body-cycle-chart { --cycle-label-width:84px; --cycle-axis-width:52px; --cycle-plot-height:330px; --cycle-row-height:35px; --cycle-grid-color:rgba(113,128,120,.17); min-width:0; }
-.body-cycle-scroll { position:relative; width:100%; overflow-x:auto; overscroll-behavior-x:contain; touch-action:pan-x pan-y; border:1px solid var(--line); border-radius:12px; scrollbar-width:thin; scrollbar-color:var(--sage) transparent; }
+.body-cycle-scroll { position:relative; width:100%; overflow-x:auto; overscroll-behavior-x:contain; touch-action:auto; border:1px solid var(--line); border-radius:12px; scrollbar-width:thin; scrollbar-color:var(--sage) transparent; }
 .body-cycle-grid { display:grid; grid-template-columns:var(--cycle-label-width) minmax(0,1fr) var(--cycle-axis-width); min-width:max(100%,calc(var(--cycle-days) * var(--cycle-day-width) + var(--cycle-label-width) + var(--cycle-axis-width))); }
 .cycle-sticky-left { position:sticky; left:0; z-index:5; background:var(--card); border-right:1px solid var(--line); }
 .cycle-sticky-right { position:sticky; right:0; z-index:5; background:var(--card); border-left:1px solid var(--line); }
