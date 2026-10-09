@@ -41,12 +41,15 @@ export interface ApplicationRepository extends DataRepository {
   load(defaultWidgets: string[]): AppData;
   save<K extends keyof AppData>(dataset: K, value: AppData[K]): void;
   saveMany(changes: Partial<AppData>): void;
-  loadPractice(): StoredPractice | null;
-  savePractice(value: StoredPractice | null): void;
-  loadQuote(): StoredQuoteRotation | null;
-  saveQuote(value: StoredQuoteRotation): void;
+  loadPractice(scope?: DeviceStateScope | null): StoredPractice | null;
+  savePractice(value: StoredPractice | null, scope?: DeviceStateScope | null): void;
+  loadQuote(scope?: DeviceStateScope | null): StoredQuoteRotation | null;
+  saveQuote(value: StoredQuoteRotation, scope?: DeviceStateScope | null): void;
   exportRaw(): string;
   issues(): RepositoryIssue[];
   reviewRecords(): ReviewRecord[];
   restoreReviewRecord(index: number): void;
 }
+
+/** undefined = explicit local fallback; null = signed-out/in-memory-only shell. */
+export type DeviceStateScope = { project: string; uid: string };

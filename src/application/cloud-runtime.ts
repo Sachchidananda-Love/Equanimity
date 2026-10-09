@@ -4,9 +4,11 @@ import { lifecycleLog, lifecycleSpan } from "../platform/lifecycle-log";
 import { createDeviceCloudRecovery } from "../adapters/firebase/device-recovery";
 
 let cloudPrimary = false;
+export let cloudProjectId = "unconfigured";
 let recovery: ReturnType<typeof createDeviceCloudRecovery> | undefined;
 try {
   const configuration = browserFirebaseConfiguration();
+  cloudProjectId = configuration.options.projectId || "unconfigured";
   cloudPrimary = configuration.enabled;
   if (cloudPrimary && typeof window !== "undefined") recovery = createDeviceCloudRecovery(configuration.options.projectId, configuration.options.appId);
 } catch { cloudPrimary = true; /* enabled but invalid configuration stays closed; fallback must be explicit */ }

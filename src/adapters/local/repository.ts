@@ -1,4 +1,4 @@
-import type { AppData, ApplicationRepository, RepositoryIssue, ReviewRecord } from "../../services/repository-contracts";
+import type { AppData, ApplicationRepository, RepositoryIssue, ReviewRecord, DeviceStateScope } from "../../services/repository-contracts";
 import type { StoredPractice, StoredQuoteRotation } from "../../domain/practice/types";
 import { defaultActivities, defaultTimers } from "../../domain/practice/defaults";
 import { separateLegacySamples } from "../../migrations/legacy";
@@ -106,21 +106,33 @@ export function createLocalRepository(storage: () => StoragePort, now = () => ne
     envelope = { ...envelope, data: { ...envelope.data, ...structuredClone(changes) } };
     try { persist(); } catch (e) { envelope = previous; throw e; }
   }
-  function readAux<T>(key: string, valid: (v: unknown) => boolean): T | null {
-    try { const raw = storage().getItem(`${key}-v1`) ?? storage().getItem(key); if (raw === null) return null; const parsed: unknown = JSON.parse(raw); const value = object(parsed) && parsed.schemaVersion === 1 ? parsed.value : parsed; if (!valid(value)) throw new Error("Invalid saved device state; original retained"); return value as T; }
+  function scopedKey(key: string, scope?: DeviceStateScope | null) {
+    if (!scope) return key;
+    if (!scope.project || !scope.uid || scope.uid.includes("/")) throw new Error("A project and private UID are required for device state");
+    return `equanimity:runtime:${encodeURIComponent(scope.project)}:${encodeURIComponent(scope.uid)}:${key}`;
+  }
+  function readAux<T>(key: string, valid: (v: unknown) => boolean, scope?: DeviceStateScope | null): T | null {
+    if (scope === null) return null;
+    key = scopedKey(key, scope);
+    try { const raw = storage().getItem(`${key}-v1`) ?? (scope ? null : storage().getItem(key)); if (raw === null) return null; const parsed: unknown = JSON.parse(raw); if (scope && (!object(parsed) || parsed.schemaVersion !== 1 || parsed.ownerUid !== scope.uid || parsed.project !== scope.project)) throw new Error("Device state belongs to another account; original retained"); const value = object(parsed) && parsed.schemaVersion === 1 ? parsed.value : parsed; if (!valid(value)) throw new Error("Invalid saved device state; original retained"); return value as T; }
     catch (e) { protectedSets.add(key); issue(key, String(e)); return null; }
   }
-  function writeAux(key: string, value: unknown, valid: (v: unknown) => boolean) {
-    if (readOnly || protectedSets.has(key)) throw new Error("Device state is protected; original retained");
+  function writeAux(key: string, value: unknown, valid: (v: unknown) => boolean, scope?: DeviceStateScope | null) {
+    if (scope === null) return;
+    key = scopedKey(key, scope);
+    if ((!scope && readOnly) || protectedSets.has(key)) throw new Error("Device state is protected; original retained");
     if (value !== null && !valid(value)) throw new Error("Invalid device state");
-    backup(); storage().setItem(`${key}-v1`, JSON.stringify({ schemaVersion: 1, value }));
+    if (!scope) backup();
+    const raw = JSON.stringify({ schemaVersion: 1, ...(scope ? { ownerUid: scope.uid, project: scope.project } : {}), value });
+    storage().setItem(`${key}-v1`, raw);
+    if (storage().getItem(`${key}-v1`) !== raw) throw new Error("Device state could not be persisted");
   }
   return {
     load, save, saveMany,
-    loadPractice: () => readAux<StoredPractice>(LEGACY_KEYS.practice, v => v === null || practiceValid(v)),
-    savePractice: v => writeAux(LEGACY_KEYS.practice, v, practiceValid),
-    loadQuote: () => readAux<StoredQuoteRotation>(LEGACY_KEYS.quote, quoteValid),
-    saveQuote: v => writeAux(LEGACY_KEYS.quote, v, quoteValid),
+    loadPractice: scope => readAux<StoredPractice>(LEGACY_KEYS.practice, v => v === null || practiceValid(v), scope),
+    savePractice: (v, scope) => writeAux(LEGACY_KEYS.practice, v, practiceValid, scope),
+    loadQuote: scope => readAux<StoredQuoteRotation>(LEGACY_KEYS.quote, quoteValid, scope),
+    saveQuote: (v, scope) => writeAux(LEGACY_KEYS.quote, v, quoteValid, scope),
     exportRaw: () => JSON.stringify({ format: "yi-raw-storage-backup", schemaVersion: 1, exportedAt: now(), records: { ...rawRecords(), [BACKUP_KEY]: storage().getItem(BACKUP_KEY) } }, null, 2),
     issues: () => [...problems.filter(problem => problem.dataset !== "samples"), ...(envelope?.review.length ? [{ dataset: "samples", message: `${envelope.review.length} records match sample content and are kept separately for review` }] : [])],
     reviewRecords: () => structuredClone(envelope?.review ?? []),

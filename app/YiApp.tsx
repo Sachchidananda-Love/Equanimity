@@ -34,8 +34,8 @@ import { useAppData } from "../src/application/use-app-data";
 import { DataTools } from "../src/application/DataTools";
 import { reconcileManualHealthRecords, cycleDisplayLog } from "../src/services/health-service";
 import { assetUrl } from "../src/platform/runtime";
-import type { DataRepository } from "../src/services/repository-contracts";
-import { cloudSession } from "../src/application/cloud-runtime";
+import type { DataRepository, DeviceStateScope } from "../src/services/repository-contracts";
+import { cloudSession, cloudProjectId } from "../src/application/cloud-runtime";
 import { CloudPanel } from "../src/application/CloudPanel";
 import { observeCloudLifecycle } from "../src/platform/cloud-lifecycle";
 import { lifecycleLog, lifecycleMeasure, observeUiDiagnostics } from "../src/platform/lifecycle-log";
@@ -48,6 +48,7 @@ type ReflectionRequest = { duration: number; type?: string };
 
 const StableNowContext = createContext<number | null>(null);
 const PersistenceReadyContext = createContext(true);
+const DeviceStateScopeContext = createContext<DeviceStateScope | null | undefined>(undefined);
 function PersistentButton(props: React.ButtonHTMLAttributes<HTMLButtonElement>) {
   const ready = useContext(PersistenceReadyContext);
   return <button {...props} disabled={props.disabled || !ready} />;
@@ -427,6 +428,7 @@ function AddDashboardWidgetModal({ current, renderPreview, onAdd, onClose }: { c
 }
 
 function TodayScreen({ setActive, entries, cycleLog, onCycleLog, openReflection, widgets, setWidgets, addEntry, books, setBooks }: { setActive: (screen: Screen) => void; entries: JournalEntry[]; cycleLog: CycleLog; onCycleLog: () => void; openReflection: (request: ReflectionRequest) => void; widgets: DashboardWidgetId[]; setWidgets: React.Dispatch<React.SetStateAction<DashboardWidgetId[]>>; addEntry: (entry: JournalEntry) => void; books: BookRecord[]; setBooks: React.Dispatch<React.SetStateAction<BookRecord[]>> }) {
+  const deviceScope = useContext(DeviceStateScopeContext);
   const now = useStableNow(); const [quoteOrder, setQuoteOrder] = useState(() => dailyQuotes.map((_, index) => index)); const [quotePosition, setQuotePosition] = useState(0); const [quoteDay, setQuoteDay] = useState(() => displayDay(now)); const [quoteReady, setQuoteReady] = useState(false); const [editing, setEditing] = useState(false); const [adding, setAdding] = useState(false); const [expanded, setExpanded] = useState<InsightWidgetId | null>(null); const [timePracticedOpen, setTimePracticedOpen] = useState(false); const [booksExpanded, setBooksExpanded] = useState(false); const [bookLogOpen, setBookLogOpen] = useState(false); const [dragging, setDragging] = useState<DashboardWidgetId | null>(null); const [reflection, setReflection] = useState("");
   const todayLabel = new Date(now).toLocaleDateString("en-CA", { weekday: "long", month: "long", day: "numeric", timeZone: DISPLAY_TIME_ZONE });
   const hold = useMemo(() => createWidgetHold(), []); const dragPointer = useRef<{ pointerId: number; node: HTMLElement } | null>(null); const draggingRef = useRef<DashboardWidgetId | null>(null); const dashboardRef = useRef<HTMLDivElement | null>(null); const dragOffset = useRef({ x: 0, y: 0 }); const grabOffset = useRef({ x: 0, y: 0 }); const lastPointer = useRef({ x: 0, y: 0 }); const reorderKey = useRef<string | null>(null); const edgeScrollFrame = useRef<number | null>(null); const recent = entries.slice(0, 2); const quoteIndex = quoteOrder[quotePosition] ?? 0;
@@ -436,7 +438,7 @@ function TodayScreen({ setActive, entries, cycleLog, onCycleLog, openReflection,
       let order = shuffledQuoteOrder();
       let position = dailyQuotePosition(currentDay);
       try {
-        const saved = localRepository.loadQuote();
+        const saved = localRepository.loadQuote(deviceScope);
         if (saved?.signature === quoteListSignature && validQuoteOrder(saved.order)) {
           order = saved.order;
           if (saved.day === currentDay && Number.isInteger(saved.position) && saved.position >= 0 && saved.position < dailyQuotes.length) position = saved.position;
@@ -445,11 +447,11 @@ function TodayScreen({ setActive, entries, cycleLog, onCycleLog, openReflection,
       setQuoteOrder(order); setQuotePosition(position); setQuoteDay(currentDay); setQuoteReady(true);
     }, 0);
     return () => window.clearTimeout(timer);
-  }, []);
+  }, [deviceScope]);
   useEffect(() => {
     if (!quoteReady) return;
-    try { localRepository.saveQuote({ signature: quoteListSignature, order: quoteOrder, day: quoteDay, position: quotePosition } satisfies StoredQuoteRotation); } catch { /* quote rotation can remain in memory */ }
-  }, [quoteReady, quoteOrder, quoteDay, quotePosition]);
+    try { localRepository.saveQuote({ signature: quoteListSignature, order: quoteOrder, day: quoteDay, position: quotePosition } satisfies StoredQuoteRotation, deviceScope); } catch { /* quote rotation can remain in memory */ }
+  }, [quoteReady, quoteOrder, quoteDay, quotePosition, deviceScope]);
   useEffect(() => {
     if (!quoteReady) return;
     const updateDay = () => { const currentDay = displayDay(Date.now()); if (currentDay !== quoteDay) { setQuoteDay(currentDay); setQuotePosition(dailyQuotePosition(currentDay)); } };
@@ -571,22 +573,23 @@ function SaveTimerModal({ initial, onClose, onSave }: { initial?: TimerPreset; o
 }
 
 function PracticeScreen({ timers, setTimers, openReflection, notify }: { timers: TimerPreset[]; setTimers: React.Dispatch<React.SetStateAction<TimerPreset[]>>; openReflection: (request: ReflectionRequest) => void; notify: (message: string) => void }) {
+  const deviceScope = useContext(DeviceStateScopeContext);
   const [mode, setMode] = useState<PracticeMode>("Timer"); const [duration, setDuration] = useState(600); const [remaining, setRemaining] = useState(600); const [running, setRunning] = useState(false); const [elapsed, setElapsed] = useState(0);
   const [gongMenu, setGongMenu] = useState<"opening" | "closing" | null>(null); const [openingGong, setOpeningGong] = useState(gongNames[0]); const [closingGong, setClosingGong] = useState(gongNames[0]); const [intervalEnabled, setIntervalEnabled] = useState(true); const [intervalMinutes, setIntervalMinutes] = useState(5); const [intervalGong, setIntervalGong] = useState(gongNames[2]); const [customGongs, setCustomGongs] = useState([3, 8]); const [customGongSounds, setCustomGongSounds] = useState([gongNames[2], gongNames[3]]);
   const [editingGongs, setEditingGongs] = useState(false); const [builder, setBuilder] = useState<TimerPreset | "new" | null>(null); const [presetMenu, setPresetMenu] = useState<RecordId | null>(null); const [draftId] = useState(createRecordId); const [customDurationOpen, setCustomDurationOpen] = useState(false); const [customHours, setCustomHours] = useState(0); const [customMinutes, setCustomMinutes] = useState(15); const [customSeconds, setCustomSeconds] = useState(0); const lastGong = useRef(-1); const deadline = useRef<number | null>(null); const stopwatchStartedAt = useRef<number | null>(null); const restored = useRef(false);
   const previousMode = useRef<"Timer" | "Stopwatch">("Timer");
-  const clearStoredPractice = () => { try { lifecycleMeasure("active-practice checkpoint clear", () => localRepository.savePractice(null)); } catch { lifecycleLog("practice checkpoint unavailable"); } };
-  const storePractice = useCallback((record: StoredPractice) => { try { lifecycleMeasure("active-practice checkpoint write", () => localRepository.savePractice(record)); } catch { lifecycleLog("practice checkpoint unavailable"); } }, []);
+  const clearStoredPractice = useCallback(() => { try { lifecycleMeasure("active-practice checkpoint clear", () => localRepository.savePractice(null, deviceScope)); } catch { lifecycleLog("practice checkpoint unavailable"); } }, [deviceScope]);
+  const storePractice = useCallback((record: StoredPractice) => { try { lifecycleMeasure("active-practice checkpoint write", () => localRepository.savePractice(record, deviceScope)); } catch { lifecycleLog("practice checkpoint unavailable"); } }, [deviceScope]);
   useEffect(() => { lifecycleLog("practice active state committed", { ready: running }); }, [running]);
   const completeTimer = useCallback(() => {
     setRunning(false); setRemaining(0); deadline.current = null; clearStoredPractice(); tone(closingGong);
     if (typeof Notification !== "undefined" && Notification.permission === "granted") new Notification("Practice complete", { body: "Your meditation timer has finished." });
     openReflection({ duration: Math.max(1, Math.round(duration / 60)), type: "Meditation" });
-  }, [closingGong, duration, openReflection]);
+  }, [closingGong, duration, openReflection, clearStoredPractice]);
   useEffect(() => {
     if (restored.current) return; restored.current = true;
     try {
-      const saved = localRepository.loadPractice(); if (!saved) return;
+      const saved = localRepository.loadPractice(deviceScope); if (!saved) return;
       const restoreTimer = window.setTimeout(() => {
         setMode(saved.mode); setDuration(saved.duration); setOpeningGong(normalizedGongName(saved.openingGong)); setClosingGong(normalizedGongName(saved.closingGong)); setIntervalEnabled(saved.intervalEnabled); setIntervalMinutes(saved.intervalMinutes); setIntervalGong(normalizedGongName(saved.intervalGong ?? gongNames[2])); setCustomGongs(saved.customGongs); setCustomGongSounds((saved.customGongSounds ?? saved.customGongs.map(() => gongNames[2])).map(normalizedGongName));
         if (saved.mode === "Timer" && saved.endAt) { const next = Math.max(0, Math.ceil((saved.endAt - Date.now()) / 1000)); setRemaining(next); if (next > 0) { deadline.current = saved.endAt; lastGong.current = saved.duration - next; setRunning(true); } else { clearStoredPractice(); notify("Your timer finished while you were away"); openReflection({ duration: Math.max(1, Math.round(saved.duration / 60)), type: "Meditation" }); } }
@@ -594,7 +597,7 @@ function PracticeScreen({ timers, setTimers, openReflection, notify }: { timers:
       }, 0);
       return () => window.clearTimeout(restoreTimer);
     } catch { clearStoredPractice(); }
-  }, [notify, openReflection]);
+  }, [notify, openReflection, deviceScope, clearStoredPractice]);
   useEffect(() => {
     lifecycleLog("practice timer effect", { ready: running });
     if (!running) return;
@@ -789,6 +792,7 @@ function CycleLogModal({ cycleLog, onClose, onSave }: { cycleLog: CycleLog; onCl
 function YiExperience({ initialNow, repository, uid, active, setActive, closed = false, cloudBusy = false, blocked = false }: { initialNow: number; repository?: DataRepository; uid?: string; active: Screen; setActive: React.Dispatch<React.SetStateAction<Screen>>; closed?: boolean; cloudBusy?: boolean; blocked?: boolean }) {
   lifecycleLog("account view render started");
   const stableNow = initialNow;
+  const deviceScope = useMemo(() => uid ? { project: cloudProjectId, uid } : closed ? null : undefined, [uid, closed]);
   const [reflection, setReflection] = useState<ReflectionRequest | null>(null); const [cycleOpen, setCycleOpen] = useState(false); const [toast, setToast] = useState("");
   const { journal: entries, timers, activities, books, cycle: cycleLog, health, widgets, acceptImportedData, ready: loaded, issues, reload, setEntries, setTimers, setActivities, setBooks, setCycleLog, setDashboardWidgets, setHealth } = useAppData(defaultDashboardWidgets, repository);
   const [importing, setImporting] = useState(false);
@@ -803,7 +807,7 @@ function YiExperience({ initialNow, repository, uid, active, setActive, closed =
   const saveCycle = (log: CycleLog) => { const latest = log.history.at(-1); setCycleLog(log); const modified = log.history.find(item => item.recordOrigin === "user" && item.recordedFields !== undefined && JSON.stringify(item) !== JSON.stringify(cycleLog.history.find(previous => previous.id === item.id)));
     if (modified) setHealth(current => reconcileManualHealthRecords(modified, current, new Date().toISOString()));
     addEntry({ id: createRecordId(), type: "Period", title: "Body & cycle check-in", date: "Today · just now", note: `${cycleFieldText(modified ?? latest, "flow")} flow${log.symptoms.length ? ` · ${log.symptoms.join(", ")}` : ""}${log.temperature ? ` · ${log.temperature.toFixed(2)}°C` : ""}${latest ? ` · ${cycleFieldText(latest, "cervicalMucus")} mucus` : ""}` }); };
-  return <StableNowContext.Provider value={stableNow}><PersistenceReadyContext.Provider value={ready}>
+  return <StableNowContext.Provider value={stableNow}><PersistenceReadyContext.Provider value={ready}><DeviceStateScopeContext.Provider value={deviceScope}>
     <main className="app-shell">
       <Navigation active={active} setActive={setActive} cloud={Boolean(uid)} />
       <div hidden={active !== "Insights"}><TodayScreen setActive={setActive} entries={entries} cycleLog={displayCycleLog} onCycleLog={() => setCycleOpen(true)} openReflection={setReflection} widgets={dashboardWidgets} setWidgets={(next) => setDashboardWidgets(current => typeof next === "function" ? next(current.filter((id): id is DashboardWidgetId => id in dashboardWidgetMeta)) : next)} addEntry={addEntry} books={books} setBooks={setBooks} /></div>
@@ -815,7 +819,7 @@ function YiExperience({ initialNow, repository, uid, active, setActive, closed =
       {toast && <div className="toast" role="status"><span>✓</span>{toast}</div>}
     </main>
     {!closed && <HealthKitTools uid={uid} repository={repository} onImported={acceptImportedData} onBusy={setImporting} cloudBusy={cloudBusy || !loaded} />}
-  </PersistenceReadyContext.Provider></StableNowContext.Provider>;
+  </DeviceStateScopeContext.Provider></PersistenceReadyContext.Provider></StableNowContext.Provider>;
 }
 
 export default function YiApp({ initialNow, session = cloudSession }: { initialNow: number; session?: typeof cloudSession }) {

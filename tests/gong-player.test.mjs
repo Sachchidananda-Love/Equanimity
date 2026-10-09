@@ -2,6 +2,31 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { readFile } from "node:fs/promises";
 import { createGongPlayer } from "../src/platform/gong-player.ts";
+import { createHash } from "node:crypto";
+
+test("only Tripple Gong is amplified: exact 3x PCM amplitude, no clipping, unchanged other files", async () => {
+  const originalHashes = {
+    "gong-1.wav": "bb1d74832f9646d77a298855b82a68b8fbf575f7b52a825ce7b6be4b41f92a72",
+    "gong-2.wav": "538bcd419ef19f46614e43c0139ebeb5d0b2b506dbc4f3afdcf3702591fcae73",
+    "gong-3.wav": "2fbd473f0b01cfdce4ec3082e0a441c4f8c7c0c4a87b0710ce3bccd9764630c4",
+  };
+  const hash = bytes => createHash("sha256").update(bytes).digest("hex");
+  for (const [file, expected] of Object.entries(originalHashes)) assert.equal(hash(await readFile(new URL(`../public/gong-sounds/${file}`, import.meta.url))), expected);
+  const bytes = await readFile(new URL("../public/gong-sounds/tripple-gong.wav", import.meta.url)), original = Buffer.from(bytes);
+  let samples = 0, peak = 0;
+  for (let offset = 12; offset + 8 <= bytes.length;) {
+    const size = bytes.readUInt32LE(offset + 4);
+    if (bytes.toString("ascii", offset, offset + 4) === "data") {
+      for (let i = offset + 8; i < offset + 8 + size; i += 2) {
+        const value = bytes.readInt16LE(i); assert.equal(Math.abs(value) % 3, 0);
+        original.writeInt16LE(value / 3, i); peak = Math.max(peak, Math.abs(value)); samples++;
+      }
+    }
+    offset += 8 + size + size % 2;
+  }
+  assert.equal(samples, 730951); assert.equal(peak, 4614); assert.ok(peak < 32767);
+  assert.equal(hash(original), "69ea3cbcb7ce83320b5aa24b69f3804f0b5a8e5d6407b373d85ddf023801ae6b", "samples exactly triple while WAV headers/duration stay identical");
+});
 
 test("native playback dispatches once and returns immediately even while initialization is pending", async () => {
   let resolve, webCalls = 0;

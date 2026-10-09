@@ -14,8 +14,54 @@ import { normalizeHealthKitRecords } from "../src/adapters/healthkit.ts";
 import { reconcileHealthKitRecords } from "../src/services/healthkit-import-service.ts";
 import { healthKitSample, timestamp } from "./helpers/healthkit-fixtures.mjs";
 import { createCloudSyncRepository } from "../src/services/cloud-sync.ts";
+import { IDBFactory } from "fake-indexeddb";
+import { createIndexedDbSyncStore } from "../src/adapters/firebase/sync-store.ts";
+import { createDeviceCloudRecovery } from "../src/adapters/firebase/device-recovery.ts";
+import { createDeviceCloudAccess } from "../src/adapters/firebase/device-access.ts";
 
 const projectId="demo-yi-phase3a";
+test("two actual Firebase Auth users isolate durable caches, preferences and deferred outbox replay", async () => {
+  assert.ok(process.env.FIREBASE_AUTH_EMULATOR_HOST); assert.ok(process.env.FIRESTORE_EMULATOR_HOST);
+  const emails = ["isolation-a@example.invalid", "isolation-b@example.invalid"], password = "synthetic-isolation-only";
+  const users = [];
+  for (const email of emails) {
+    const response = await fetch("http://127.0.0.1:9099/identitytoolkit.googleapis.com/v1/accounts:signUp?key=fake-key", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email, password, returnSecureToken: true }) });
+    assert.equal(response.status, 200); users.push((await response.json()).localId);
+  }
+  const env = await initializeTestEnvironment({ projectId, firestore: { rules: await readFile(new URL("../firestore.rules", import.meta.url), "utf8"), host: "127.0.0.1", port: 8080 } });
+  const idb = new IDBFactory(), values = new Map(), storage = { getItem: key => values.get(key) ?? null, setItem: (key, value) => values.set(key, value) };
+  const store = createIndexedDbSyncStore(projectId, () => idb);
+  const recovery = createDeviceCloudRecovery(projectId, "synthetic-isolation-app", { store, access: createDeviceCloudAccess(projectId, "synthetic-isolation-app", () => storage) });
+  const gateway = connectFirebase({ enabled: true, emulators: true, options: { apiKey: "fake-key", authDomain: `${projectId}.firebaseapp.com`, projectId, appId: "fake-app-id" } }, recovery);
+  const session = createCloudSession(async () => gateway, { cloudPrimary: true, recovery });
+  const aEntry = { id: "isolation-a-record", type: "Journal", title: "Synthetic A only", date: "2026-10-09" };
+  const bEntry = { id: "isolation-b-record", type: "Journal", title: "Synthetic B only", date: "2026-10-09" };
+  try {
+    await env.withSecurityRulesDisabled(async context => { for (const uid of users) await setDoc(doc(context.firestore(), `privateAccess/${uid}`), { enabled: true }); });
+    await session.signIn(emails[0], password); const a = session.repository(); await a.load([]);
+    session.setOnline(false); await a.enqueue({ journal: [aEntry], widgets: ["private-a"] });
+    await session.signOut(); session.setOnline(true);
+    await session.signIn(emails[1], password); const b = session.repository();
+    const bData = await b.load([]); assert.deepEqual(bData.journal, []); assert.ok(!bData.widgets.includes("private-a"));
+    session.setOnline(false); await b.enqueue({ journal: [bEntry], widgets: ["private-b"] });
+    session.setOnline(true); for (let i = 0; i < 3; i++) session.resume(); await b.refresh();
+    assert.equal((await store.read(users[0])).pending.length, 1);
+    assert.equal((await store.read(users[1])).pending.length, 0);
+    assert.deepEqual((await b.restore()).journal, [bEntry]);
+    await assert.rejects(a.refresh(), /cancelled/);
+    await assertFails(getDocs(collection(env.authenticatedContext(users[1]).firestore(), `users/${users[0]}/journalEntries`)));
+    await assertFails(setDoc(doc(env.authenticatedContext(users[1]).firestore(), `users/${users[0]}/settings/dashboard`), { schemaVersion: 1, ownerUid: users[0], record: { widgets: ["foreign"] }, deleted: false }));
+    await session.signOut(); assert.equal(session.repository(), undefined); assert.equal(recovery.access.owner(), null);
+    await session.signIn(emails[0], password); const returningA = session.repository(); await returningA.restore(); await returningA.refresh();
+    assert.deepEqual((await returningA.restore()).journal, [aEntry]);
+    assert.equal((await store.read(users[0])).pending.length, 0);
+    assert.deepEqual((await gateway.repository(users[0]).load([])).widgets, ["private-a"]);
+    await assert.rejects(gateway.repository(users[1]).load([]), /UID/);
+    await session.signOut(); await session.signIn(emails[1], password);
+    const returningB = session.repository(); await returningB.restore(); await returningB.refresh();
+    assert.deepEqual((await returningB.restore()).journal, [bEntry]); assert.deepEqual((await returningB.restore()).widgets, ["private-b"]);
+  } finally { await session.signOut(); await env.cleanup(); const { getApp } = await import("firebase/app"); await deleteApp(getApp("yi-private-cloud")); }
+});
 test("actual Firestore transaction retry after lost acknowledgement and restart is idempotent under owner rules", async () => {
   assert.ok(process.env.FIREBASE_AUTH_EMULATOR_HOST); assert.ok(process.env.FIRESTORE_EMULATOR_HOST);
   const response = await fetch("http://127.0.0.1:9099/identitytoolkit.googleapis.com/v1/accounts:signUp?key=fake-key", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email: "recovery-emulator@example.invalid", password: "throwaway-recovery-password", returnSecureToken: true }) });

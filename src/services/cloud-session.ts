@@ -87,6 +87,9 @@ export function createCloudSession(connect: () => Promise<CloudGateway>, { cloud
     async signIn(email: string, password: string) {
       if (signingOut || snapshot.auth === "authenticating") return;
       try { revokeAccess(); } catch { update({ error: "Could not close previous device account access. Sign-in was not started; retry on this device." }); return; }
+      // Explicit sign-in returns to the cloud account; only passive restoration
+      // should preserve a user's deliberate local-fallback selection.
+      explicitLocal = false;
       signingIn = true; signInIdentity = undefined; allowAuthenticatedActivation = false;
       accessClosed = true; const attempt = ++authIntent;
       generation++; closeRepository();
