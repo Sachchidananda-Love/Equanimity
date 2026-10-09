@@ -42,6 +42,13 @@ export type FertilityDayEstimate = {
 const isoDay = (day: number) => new Date(day * MILLISECONDS_PER_DAY).toISOString().slice(0, 10);
 const trusted = (record: CycleDayLog) => record.recordOrigin !== "sample" && record.recordOrigin !== "legacy-unverified";
 
+/** Explicit, trusted starts plus the compatible last-period setting. An explicit
+ * false/manual correction wins over that setting. Shared with journal context. */
+export function fertilityCycleStartDates(log: CycleLog) {
+  const excludedLastPeriod = log.history.some(record => record.date === log.lastPeriod && (!trusted(record) || value(record, "cycleDayOne") === false));
+  return cycleStartDates({ ...log, lastPeriod: excludedLastPeriod ? "" : log.lastPeriod, history: log.history.filter(record => value(record, "cycleDayOne") === true) });
+}
+
 /** Fertility estimates intentionally require explicit observations, not legacy form defaults. */
 function value<K extends keyof CycleDayLog>(record: CycleDayLog | undefined, field: K): CycleDayLog[K] | undefined {
   return record && trusted(record) && record.recordedFields?.includes(field) ? record[field] : undefined;
@@ -87,6 +94,11 @@ function shiftEndingOn(records: Map<string, CycleDayLog>, end: number): Temperat
   return { firstHighDate: isoDay(end - 2), supportedOn: isoDay(end), baselineMaximum, threshold, source, dates: sequence.map(record => record!.date) };
 }
 
+/** App caution flag, not a diagnosis. Shared by calendar-only journal phases. */
+export function cycleLengthsIrregular(lengths: number[]) {
+  return lengths.length > 0 && (Math.max(...lengths) - Math.min(...lengths) > 7 || lengths.some(length => length < 26 || length > 32));
+}
+
 function preliminaryWindow(starts: string[], cycleStart: string) {
   const completed = starts.filter(start => start <= cycleStart);
   const lengths = completed.slice(1).map((start, index) => dateOnlyDay(start)! - dateOnlyDay(completed[index])!).slice(-6);
@@ -100,7 +112,7 @@ function preliminaryWindow(starts: string[], cycleStart: string) {
     end: isoDay(start + longest - 11 - 1),
     lengths,
     // This is an app caution flag, not a diagnosis of an irregular-cycle disorder.
-    irregular: longest - shortest > 7 || lengths.some(length => length < 26 || length > 32),
+    irregular: cycleLengthsIrregular(lengths),
   };
 }
 
@@ -113,8 +125,7 @@ export function deriveFertilityTimeline(log: CycleLog, dates: string[]): Fertili
   const end = Math.max(...requested.map(date => dateOnlyDay(date)!));
   const history = log.history.filter(record => trusted(record) && dateOnlyDay(record.date) !== null && dateOnlyDay(record.date)! <= end).sort((a, b) => a.date.localeCompare(b.date));
   const records = new Map(history.map(record => [record.date, record]));
-  const excludedLastPeriod = log.history.some(record => record.date === log.lastPeriod && (!trusted(record) || value(record, "cycleDayOne") === false));
-  const starts = cycleStartDates({ ...log, lastPeriod: excludedLastPeriod ? "" : log.lastPeriod, history: history.filter(record => value(record, "cycleDayOne") === true) }).filter(date => dateOnlyDay(date)! <= end);
+  const starts = fertilityCycleStartDates(log).filter(date => dateOnlyDay(date)! <= end);
   const first = Math.min(...requested.map(date => dateOnlyDay(date)!), ...history.map(record => dateOnlyDay(record.date)!), ...starts.map(date => dateOnlyDay(date)!));
   const wanted = new Set(requested);
   const results = new Map<string, FertilityDayEstimate>();

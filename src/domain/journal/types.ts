@@ -17,6 +17,7 @@ export type JournalEntry = {
   assessments?: Record<string, AssessmentValue>;
   tags?: string[];
   lunarContext?: string;
+  /** Legacy saved display snapshot. Current context is derived from cycle history. */
   cycleContext?: string;
   loggedAt?: number;
 };

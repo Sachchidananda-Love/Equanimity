@@ -84,12 +84,13 @@ test("server-renders the configured cloud sign-in boundary or local Yi experienc
 });
 
 test("keeps durable timers and responsive controls in the product source", async () => {
-  const [page, wrapper, css, layout, quotes] = await Promise.all([
+  const [page, wrapper, css, layout, quotes, cycleContext] = await Promise.all([
     readFile(new URL("../app/YiApp.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
     Promise.all(["../app/globals.css", "../src/application/body-cycle.css"].map(path => readFile(new URL(path, import.meta.url), "utf8"))).then(parts => parts.join("\n")),
     readFile(new URL("../app/layout.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/quotes.ts", import.meta.url), "utf8"),
+    readFile(new URL("../src/domain/cycle/journal-context.ts", import.meta.url), "utf8"),
   ]);
 
   assert.doesNotMatch(page, /localStorage/);
@@ -135,11 +136,13 @@ test("keeps durable timers and responsive controls in the product source", async
   assert.match(page, /localRepository.loadPractice/);
   assert.match(page, /DataTools/);
   assert.match(page, /BookLogModal/);
-  assert.match(page, /journalContexts/);
+  assert.match(page, /deriveJournalCycleContexts/);
+  assert.match(page, /journalEntryDate/);
+  assert.doesNotMatch(page, /cycleContext: entry\.cycleContext/);
   assert.match(page, /loggedAt/);
   assert.match(page, /lunarPhase\(new Date\(now\)\)/);
   assert.match(page, /StableNowContext\.Provider value=\{stableNow\}/);
-  assert.match(page, /cycleSummary/);
+  assert.match(cycleContext, /cycleSummary/);
   assert.doesNotMatch(page, /new Date\(`\$\{log\.lastPeriod\}T12:00:00`\)/);
   assert.doesNotMatch(page, /const \[draftId\] = useState\(\(\) => Date\.now\(\)\)/);
   assert.doesNotMatch(page, /if \(id === "lunar"\).*lunarPhase\(\)/);
