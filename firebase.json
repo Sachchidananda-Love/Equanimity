@@ -4,14 +4,16 @@
     "public": "privacy-site",
     "ignore": ["firebase.json", "**/.*", "**/node_modules/**"],
     "redirects": [
-      { "source": "/", "destination": "/privacy/", "type": 302 },
-      { "source": "/privacy", "destination": "/privacy/", "type": 301 }
+      { "source": "/", "destination": "/privacy/", "type": 302 }
     ],
     "headers": [
       {
         "source": "**",
         "headers": [
-          { "key": "Content-Security-Policy", "value": "default-src 'none'; style-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'" },
+          {
+            "key": "Content-Security-Policy",
+            "value": "default-src 'none'; style-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
+          },
           { "key": "Referrer-Policy", "value": "no-referrer" },
           { "key": "X-Content-Type-Options", "value": "nosniff" },
           { "key": "Cache-Control", "value": "public, max-age=300" }
