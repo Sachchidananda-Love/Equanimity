@@ -43,7 +43,8 @@ test("standalone HTML owns its client entry, snapshot, viewport and local font C
 test("shared UI renders all major screens in standalone mode without Worker/request data", () => {
   configureRuntime({kind:"standalone-web",assetBase:"/"});
   const initialNow=Date.parse("2026-10-03T02:00:00Z");const html=renderToString(createElement(YiApp,{initialNow}));
-  for(const text of ["Your wellbeing","Meditation timer","Journal prompt","Body &amp; cycle","Record a period start for cycle days","Export browser data"])assert.ok(html.includes(text),text);
+  for(const text of ["Your wellbeing","Meditation timer","Journal prompt","Body &amp; cycle","Record a period start for cycle days","Privacy"])assert.ok(html.includes(text),text);
+  assert.doesNotMatch(html,/Export browser data|Use local-only development\/fallback data/);
   assert.equal(html,renderToString(createElement(YiApp,{initialNow})),"same snapshot has deterministic initial markup");
   assert.doesNotMatch(html,/https?:\/\/|_next\/image|_vinext|cloudflare|signin-with-chatgpt/);
   configureRuntime({kind:"hosted-web",assetBase:"/"});

@@ -51,7 +51,8 @@ test("server-renders the configured cloud sign-in boundary or local Yi experienc
   if (html.includes("Sign in to open your private cloud")) {
     assert.match(html, /Private cloud data is closed/);
     assert.match(html, /type="password"/);
-    assert.match(html, /Use local-only development\/fallback data/);
+    assert.doesNotMatch(html, /Use local-only development\/fallback data/);
+    assert.match(html, /Privacy/);
     assert.match(html, /Your wellbeing/);
     assert.match(html, /Meditation timer/);
     assert.doesNotMatch(html, /\sinert(?:=|\s|>)/);

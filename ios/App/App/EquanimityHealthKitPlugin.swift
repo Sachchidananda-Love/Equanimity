@@ -39,14 +39,22 @@ final class EquanimityHealthKitPlugin: CAPPlugin, CAPBridgedPlugin {
         }
     }
 
-    private let requestedDefinitions: [TypeDefinition] = [
-        .quantity(.basalBodyTemperature, "Basal body temperature"),
-        .category(.sleepAnalysis, "Sleep analysis"),
-        .category(.menstrualFlow, "Menstrual flow"),
-        .category(.cervicalMucusQuality, "Cervical mucus quality"),
-        .category(.ovulationTestResult, "Ovulation test result"),
-        .category(.sexualActivity, "Sexual activity"),
-    ]
+    private let requestedDefinitions: [TypeDefinition] = {
+        var types: [TypeDefinition] = [
+            .quantity(.basalBodyTemperature, "Basal body temperature"),
+            .category(.menstrualFlow, "Menstrual flow"),
+            .category(.cervicalMucusQuality, "Cervical mucus quality"),
+        ]
+        #if DEBUG
+        // Inspection-only metrics are not in the verified cloud-import allowlist.
+        types.append(contentsOf: [
+            .category(.sleepAnalysis, "Sleep analysis"),
+            .category(.ovulationTestResult, "Ovulation test result"),
+            .category(.sexualActivity, "Sexual activity"),
+        ])
+        #endif
+        return types
+    }()
 
     @objc func isAvailable(_ call: CAPPluginCall) {
         call.resolve(statusPayload())

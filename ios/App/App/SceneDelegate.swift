@@ -9,7 +9,10 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         controller.webView?.evaluateJavaScript("window.dispatchEvent(new CustomEvent('equanimity:app-state', { detail: { active: \(active ? "true" : "false") } }));", completionHandler: nil)
     }
 
-    func sceneDidBecomeActive(_ scene: UIScene) { reportActivity(true) }
+    func sceneDidBecomeActive(_ scene: UIScene) {
+        EquanimityBackupSafety.protectDeviceStorage()
+        reportActivity(true)
+    }
     func sceneDidEnterBackground(_ scene: UIScene) { reportActivity(false) }
 
     func scene(_ scene: UIScene, willConnectTo session: UISceneSession, options connectionOptions: UIScene.ConnectionOptions) {

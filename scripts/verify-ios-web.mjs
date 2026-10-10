@@ -14,10 +14,21 @@ export async function verifyIosWeb() {
   const files = [];
   for (const name of await readdir(output, { recursive: true })) if ((await stat(new URL(name, output))).isFile()) files.push(name);
   const code = (await Promise.all(files.filter(name => name.endsWith(".js")).map(name => readFile(new URL(name, output), "utf8")))).join("\n");
+  const policy = loadEnv("production", root, "VITE_PRIVACY_POLICY_").VITE_PRIVACY_POLICY_URL?.trim();
+  if (policy) {
+    const url = new URL(policy);
+    assert.ok(url.protocol === "https:" && !url.username && !url.password
+      && !["localhost", "127.0.0.1", "[::1]"].includes(url.hostname)
+      && !url.hostname.endsWith(".local") && !url.hostname.endsWith(".localhost"), "Privacy policy must use a public HTTPS URL");
+    assert.ok(code.includes(policy), "Privacy policy configuration is stale; rebuild before syncing");
+  } else {
+    console.warn("TestFlight release gate: VITE_PRIVACY_POLICY_URL is not configured; the app shows a notice, not a link. Supply a published HTTPS policy before distribution.");
+  }
   const compiledEnabled = /["'`]?VITE_FIREBASE_ENABLED["'`]?\s*:\s*["'`](true|false)["'`]/.exec(code)?.[1];
   assert.equal(compiledEnabled === "true", env.VITE_FIREBASE_ENABLED === "true", "Standalone Firebase enable flag is stale; rebuild before syncing");
   assert.ok(!/["'`]?VITE_FIREBASE_USE_EMULATORS["'`]?\s*:\s*["'`]true["'`]/.test(code), "Native assets must not enable loopback Firebase emulators");
   if (env.VITE_FIREBASE_ENABLED === "true") {
+    assert.ok(!env.VITE_FIREBASE_PROJECT_ID?.startsWith("demo-"), "Native assets must use a real Firebase project");
     assert.notEqual(env.VITE_FIREBASE_USE_EMULATORS, "true", "Native preparation must not bundle loopback Firebase emulators");
     for (const name of ["VITE_FIREBASE_API_KEY", "VITE_FIREBASE_AUTH_DOMAIN", "VITE_FIREBASE_PROJECT_ID", "VITE_FIREBASE_APP_ID"]) {
       const value = env[name];

@@ -13,7 +13,7 @@ final class EquanimityBridgeViewController: CAPBridgeViewController {
         // Installed before loadWebView(): diagnostics are independent of Vite's
         // build mode and never require changing Firebase/HealthKit configuration.
         webView?.configuration.userContentController.addUserScript(WKUserScript(
-            source: "window.__EQUANIMITY_LIFECYCLE_DEBUG__ = true; window.__EQUANIMITY_LIFECYCLE_START__ = performance.now();",
+            source: "window.__EQUANIMITY_DEVELOPMENT_TOOLS__ = true; window.__EQUANIMITY_LIFECYCLE_DEBUG__ = true; window.__EQUANIMITY_LIFECYCLE_START__ = performance.now();",
             injectionTime: .atDocumentStart, forMainFrameOnly: true
         ))
         let started = ProcessInfo.processInfo.systemUptime

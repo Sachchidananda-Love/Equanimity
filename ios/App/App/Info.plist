@@ -25,7 +25,7 @@
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
 	<key>NSHealthShareUsageDescription</key>
-	<string>Equanimity reads selected health data to show temperature, sleep, and cycle information inside the app.</string>
+	<string>Equanimity optionally reads basal body temperature, menstrual flow, and cervical mucus from Apple Health to show your body and cycle history. You can separately choose to import selected records into your private Equanimity cloud account.</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

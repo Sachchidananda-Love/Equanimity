@@ -1,0 +1,13 @@
+:root { color-scheme: light dark; font-family: system-ui, sans-serif; line-height: 1.65; }
+body { margin: 0; background: #fafaf8; color: #222; }
+main { max-width: 46rem; margin: 0 auto; padding: 2rem 1.25rem 4rem; overflow-wrap: anywhere; }
+h1, h2 { line-height: 1.25; }
+h1 { font-size: 2rem; }
+h2 { margin-top: 2rem; font-size: 1.3rem; }
+li + li { margin-top: .4rem; }
+a { color: #235f80; text-underline-offset: .15em; }
+a:focus-visible { outline: 2px solid currentColor; outline-offset: 4px; }
+@media (prefers-color-scheme: dark) {
+  body { background: #161816; color: #eeeeea; }
+  a { color: #9dcde8; }
+}

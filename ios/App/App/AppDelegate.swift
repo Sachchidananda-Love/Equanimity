@@ -7,7 +7,8 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
     var window: UIWindow?
 
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
-        // Override point for customization after application launch.
+        // Protect existing and future web storage before creating any WKWebView.
+        EquanimityBackupSafety.protectDeviceStorage()
         return true
     }
 
