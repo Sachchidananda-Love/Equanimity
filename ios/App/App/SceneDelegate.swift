@@ -11,9 +11,15 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
 
     func sceneDidBecomeActive(_ scene: UIScene) {
         EquanimityBackupSafety.protectDeviceStorage()
+        PracticeNativeService.shared.foreground()
         reportActivity(true)
     }
-    func sceneDidEnterBackground(_ scene: UIScene) { reportActivity(false) }
+    func sceneDidEnterBackground(_ scene: UIScene) {
+        #if DEBUG
+        PracticeNativeService.shared.background()
+        #endif
+        reportActivity(false)
+    }
 
     func scene(_ scene: UIScene, willConnectTo session: UISceneSession, options connectionOptions: UIScene.ConnectionOptions) {
         guard let windowScene = scene as? UIWindowScene else { return }

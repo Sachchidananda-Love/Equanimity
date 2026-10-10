@@ -21,6 +21,8 @@ export type ActivityPreset = {
 
 
 export type StoredPractice = {
+  /** Stable across foreground/relaunch; new ID on a fresh Start or Resume. */
+  sessionId?: string;
   mode: "Timer" | "Stopwatch";
   duration: number;
   endAt?: number;

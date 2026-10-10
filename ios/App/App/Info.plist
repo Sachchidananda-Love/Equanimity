@@ -2,6 +2,12 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+    <key>NSSupportsLiveActivities</key>
+    <true/>
+    <key>UIBackgroundModes</key>
+    <array>
+        <string>audio</string>
+    </array>
   <key>CAPACITOR_DEBUG</key>
 	<string>$(CAPACITOR_DEBUG)</string>
 	<key>CFBundleDevelopmentRegion</key>
@@ -26,6 +32,8 @@
 	<true/>
 	<key>NSHealthShareUsageDescription</key>
 	<string>Equanimity optionally reads basal body temperature, menstrual flow, and cervical mucus from Apple Health to show your body and cycle history. You can separately choose to import selected records into your private Equanimity cloud account.</string>
+	<key>NSHealthUpdateUsageDescription</key>
+	<string>Equanimity does not write or modify data in Apple Health.</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

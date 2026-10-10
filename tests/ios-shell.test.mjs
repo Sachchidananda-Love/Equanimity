@@ -23,7 +23,8 @@ test("native project is SPM-only, uses web Firebase, and declares read-only Heal
   assert.match(swift, /exact: "8\.5\.2"/); assert.match(plist, /<string>Equanimity<\/string>/);
   assert.equal((project.match(/IPHONEOS_DEPLOYMENT_TARGET = 15\.4;/g) ?? []).length, 4);
   assert.match(plist, /NSHealthShareUsageDescription/); assert.match(entitlements, /com\.apple\.developer\.healthkit/); assert.match(project, /HealthKit\.framework/);
-  assert.doesNotMatch(swift + plist + project, /firebase-ios-sdk|GoogleService-Info|Tempdrop|aps-environment|NSAllowsArbitraryLoads|UIBackgroundModes/);
+  assert.doesNotMatch(swift + plist + project, /firebase-ios-sdk|GoogleService-Info|Tempdrop|aps-environment|NSAllowsArbitraryLoads/);
+  assert.match(plist, /<key>UIBackgroundModes<\/key>\s*<array>\s*<string>audio<\/string>\s*<\/array>/);
   assert.match(ignore, /\/ios\/App\/App\/public\//); assert.doesNotMatch(ignore, /^\/ios\/$/m);
 });
 test("synced native asset bundle is complete and identical to dist-mobile", async () => {

@@ -7,6 +7,18 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		9B1B7C00000000000000002d /* PracticeNotificationRequest.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9B1B7C00000000000000002c; };
+		9B1B7C000000000000000014 /* PracticePlan.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9B1B7C000000000000000001; };
+		9B1B7C000000000000000015 /* EquanimityPracticePlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9B1B7C000000000000000002; };
+		9B1B7C000000000000000016 /* PracticeActivityAttributes.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9B1B7C000000000000000003; };
+		9B1B7C000000000000000017 /* PracticeActivityAttributes.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9B1B7C000000000000000003; };
+		9B1B7C000000000000000018 /* PracticeActivityWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9B1B7C000000000000000004; };
+		9B1B7C000000000000000019 /* EquanimityPracticeActivity.appex in Embed App Extensions */ = {isa = PBXBuildFile; fileRef = 9B1B7C000000000000000006; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		9B1B7C00000000000000001e /* Notification gong in Resources */ = {isa = PBXBuildFile; fileRef = 9B1B7C000000000000000028; };
+		9B1B7C00000000000000001f /* Notification gong in Resources */ = {isa = PBXBuildFile; fileRef = 9B1B7C000000000000000029; };
+		9B1B7C000000000000000020 /* Notification gong in Resources */ = {isa = PBXBuildFile; fileRef = 9B1B7C00000000000000002a; };
+		9B1B7C000000000000000021 /* Notification gong in Resources */ = {isa = PBXBuildFile; fileRef = 9B1B7C00000000000000002b; };
+
         8A1B7C114E5F678901234567 /* EquanimityBackupSafety.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8A1B7C104E5F678901234567 /* EquanimityBackupSafety.swift */; };
         7A1B7C114E5F678901234567 /* EquanimityGongPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7A1B7C104E5F678901234567 /* EquanimityGongPlugin.swift */; };
 		2FAD9763203C412B000D30F8 /* config.xml in Resources */ = {isa = PBXBuildFile; fileRef = 2FAD9762203C412B000D30F8 /* config.xml */; };
@@ -23,7 +35,27 @@
 		9582B6832FE993A70072D4E8 /* SceneDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9582B6822FE993A50072D4E8 /* SceneDelegate.swift */; };
 /* End PBXBuildFile section */
 
+/* Begin PBXContainerItemProxy section */
+		9B1B7C000000000000000012 = {isa = PBXContainerItemProxy; containerPortal = 504EC2FC1FED79650016851F; proxyType = 1; remoteGlobalIDString = 9B1B7C00000000000000000a; remoteInfo = EquanimityPracticeActivity; };
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		9B1B7C000000000000000011 = {isa = PBXCopyFilesBuildPhase; buildActionMask = 2147483647; dstPath = ""; dstSubfolderSpec = 13; files = (9B1B7C000000000000000019, ); name = "Embed App Extensions"; runOnlyForDeploymentPostprocessing = 0; };
+/* End PBXCopyFilesBuildPhase section */
+
 /* Begin PBXFileReference section */
+		9B1B7C00000000000000002c = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PracticeNotificationRequest.swift; sourceTree = "<group>"; };
+		9B1B7C000000000000000001 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PracticePlan.swift; sourceTree = "<group>"; };
+		9B1B7C000000000000000002 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EquanimityPracticePlugin.swift; sourceTree = "<group>"; };
+		9B1B7C000000000000000003 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PracticeActivityAttributes.swift; sourceTree = "<group>"; };
+		9B1B7C000000000000000004 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PracticeActivityWidget.swift; sourceTree = "<group>"; };
+		9B1B7C000000000000000005 = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		9B1B7C000000000000000006 = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = EquanimityPracticeActivity.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		9B1B7C000000000000000028 = {isa = PBXFileReference; lastKnownFileType = audio.wav; path = equanimity-gong-1.wav; sourceTree = "<group>"; };
+		9B1B7C000000000000000029 = {isa = PBXFileReference; lastKnownFileType = audio.wav; path = equanimity-gong-2.wav; sourceTree = "<group>"; };
+		9B1B7C00000000000000002a = {isa = PBXFileReference; lastKnownFileType = audio.wav; path = equanimity-gong-3.wav; sourceTree = "<group>"; };
+		9B1B7C00000000000000002b = {isa = PBXFileReference; lastKnownFileType = audio.wav; path = equanimity-tripple-gong.wav; sourceTree = "<group>"; };
+
         8A1B7C104E5F678901234567 /* EquanimityBackupSafety.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EquanimityBackupSafety.swift; sourceTree = "<group>"; };
         7A1B7C104E5F678901234567 /* EquanimityGongPlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EquanimityGongPlugin.swift; sourceTree = "<group>"; };
 		2FAD9762203C412B000D30F8 /* config.xml */ = {isa = PBXFileReference; lastKnownFileType = text.xml; path = config.xml; sourceTree = "<group>"; };
@@ -44,6 +76,7 @@
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
+		9B1B7C00000000000000000c = {isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
 		504EC3011FED79650016851F /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
@@ -56,10 +89,14 @@
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
+		9B1B7C000000000000000007 = {isa = PBXGroup; children = (9B1B7C000000000000000004, 9B1B7C000000000000000005, ); path = EquanimityPracticeActivity; sourceTree = "<group>"; };
+		9B1B7C000000000000000008 = {isa = PBXGroup; children = (9B1B7C000000000000000003, ); path = PracticeShared; sourceTree = "<group>"; };
+		9B1B7C000000000000000009 = {isa = PBXGroup; children = (9B1B7C000000000000000028, 9B1B7C000000000000000029, 9B1B7C00000000000000002a, 9B1B7C00000000000000002b, ); path = NotificationSounds; sourceTree = "<group>"; };
 		504EC2FB1FED79650016851F = {
 			isa = PBXGroup;
 			children = (
 				958DCC722DB07C7200EA8C5F /* debug.xcconfig */,
+				9B1B7C000000000000000007, 9B1B7C000000000000000008, 9B1B7C000000000000000009,
 				504EC3061FED79650016851F /* App */,
 				504EC3051FED79650016851F /* Products */,
 			);
@@ -69,6 +106,7 @@
 			isa = PBXGroup;
 			children = (
 				504EC3041FED79650016851F /* App.app */,
+				9B1B7C000000000000000006,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -77,6 +115,7 @@
 			isa = PBXGroup;
 			children = (
                 8A1B7C104E5F678901234567 /* EquanimityBackupSafety.swift */,
+				9B1B7C000000000000000001, 9B1B7C000000000000000002, 9B1B7C00000000000000002c,
 				9582B6822FE993A50072D4E8 /* SceneDelegate.swift */,
 				6A1B7C0E4E5F678901234567 /* EquanimityBridgeViewController.swift */,
 				6A1B7C104E5F678901234567 /* EquanimityHealthKitPlugin.swift */,
@@ -97,6 +136,13 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
+		9B1B7C00000000000000000a /* EquanimityPracticeActivity */ = {
+			isa = PBXNativeTarget; buildConfigurationList = 9B1B7C00000000000000000e;
+			buildPhases = (9B1B7C00000000000000000b, 9B1B7C00000000000000000c, 9B1B7C00000000000000000d, );
+			buildRules = (); dependencies = (); name = EquanimityPracticeActivity;
+			productName = EquanimityPracticeActivity; productReference = 9B1B7C000000000000000006;
+			productType = "com.apple.product-type.app-extension";
+		};
 		504EC3031FED79650016851F /* App */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = 504EC3161FED79650016851F /* Build configuration list for PBXNativeTarget "App" */;
@@ -104,10 +150,12 @@
 				504EC3001FED79650016851F /* Sources */,
 				504EC3011FED79650016851F /* Frameworks */,
 				504EC3021FED79650016851F /* Resources */,
+				9B1B7C000000000000000011,
 			);
 			buildRules = (
 			);
 			dependencies = (
+				9B1B7C000000000000000013,
 			);
 			name = App;
 			packageProductDependencies = (
@@ -126,6 +174,7 @@
 				LastSwiftUpdateCheck = 0920;
 				LastUpgradeCheck = 0920;
 				TargetAttributes = {
+					9B1B7C00000000000000000a = {CreatedOnToolsVersion = 26.6; ProvisioningStyle = Automatic; };
 					504EC3031FED79650016851F = {
 						CreatedOnToolsVersion = 9.2;
 						LastSwiftMigration = 1100;
@@ -150,16 +199,19 @@
 			projectRoot = "";
 			targets = (
 				504EC3031FED79650016851F /* App */,
+				9B1B7C00000000000000000a,
 			);
 		};
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
+		9B1B7C00000000000000000d = {isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
 		504EC3021FED79650016851F /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
 				504EC3121FED79650016851F /* LaunchScreen.storyboard in Resources */,
+				9B1B7C00000000000000001e, 9B1B7C00000000000000001f, 9B1B7C000000000000000020, 9B1B7C000000000000000021,
 				50B271D11FEDC1A000F3C39B /* public in Resources */,
 				504EC30F1FED79650016851F /* Assets.xcassets in Resources */,
 				50379B232058CBB4000EE86E /* capacitor.config.json in Resources */,
@@ -171,6 +223,7 @@
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
+		9B1B7C00000000000000000b = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (9B1B7C000000000000000017, 9B1B7C000000000000000018, ); runOnlyForDeploymentPostprocessing = 0; };
 		504EC3001FED79650016851F /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -181,10 +234,15 @@
 				6A1B7C114E5F678901234567 /* EquanimityHealthKitPlugin.swift in Sources */,
                 7A1B7C114E5F678901234567 /* EquanimityGongPlugin.swift in Sources */,
                 8A1B7C114E5F678901234567 /* EquanimityBackupSafety.swift in Sources */,
+				9B1B7C000000000000000014, 9B1B7C000000000000000015, 9B1B7C000000000000000016, 9B1B7C00000000000000002d,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		9B1B7C000000000000000013 = {isa = PBXTargetDependency; target = 9B1B7C00000000000000000a; targetProxy = 9B1B7C000000000000000012; };
+/* End PBXTargetDependency section */
 
 /* Begin PBXVariantGroup section */
 		504EC30B1FED79650016851F /* Main.storyboard */ = {
@@ -206,6 +264,43 @@
 /* End PBXVariantGroup section */
 
 /* Begin XCBuildConfiguration section */
+		9B1B7C00000000000000000f = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = V9P6CQD53C;
+				CURRENT_PROJECT_VERSION = 1;
+				MARKETING_VERSION = 1.0;
+				INFOPLIST_FILE = EquanimityPracticeActivity/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 16.2;
+				LD_RUNPATH_SEARCH_PATHS = ("$(inherited)", "@executable_path/Frameworks", "@executable_path/../../Frameworks", );
+				PRODUCT_BUNDLE_IDENTIFIER = win.calemandersonbar.equanimity.practiceactivity;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			}; name = Debug;
+		};
+		9B1B7C000000000000000010 = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = V9P6CQD53C;
+				CURRENT_PROJECT_VERSION = 1;
+				MARKETING_VERSION = 1.0;
+				INFOPLIST_FILE = EquanimityPracticeActivity/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 16.2;
+				LD_RUNPATH_SEARCH_PATHS = ("$(inherited)", "@executable_path/Frameworks", "@executable_path/../../Frameworks", );
+				PRODUCT_BUNDLE_IDENTIFIER = win.calemandersonbar.equanimity.practiceactivity;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			}; name = Release;
+		};
+
 		504EC3141FED79650016851F /* Debug */ = {
 			isa = XCBuildConfiguration;
 			baseConfigurationReference = 958DCC722DB07C7200EA8C5F /* debug.xcconfig */;
@@ -366,6 +461,7 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
+		9B1B7C00000000000000000e = {isa = XCConfigurationList; buildConfigurations = (9B1B7C00000000000000000f, 9B1B7C000000000000000010, ); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
 		504EC2FF1FED79650016851F /* Build configuration list for PBXProject "App" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (

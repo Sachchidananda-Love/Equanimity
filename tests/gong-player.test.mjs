@@ -88,3 +88,23 @@ test("native player is registered/compiled, loads only bundled gongs, and keeps 
   assert.match(bridge, /registerPluginInstance\(EquanimityGongPlugin\(\)\)/);
   assert.equal((project.match(/EquanimityGongPlugin.swift in Sources/g) ?? []).length, 2);
 });
+
+test("native gong finishes finite playback in background and releases its session without replay or polling", async () => {
+  const native = await readFile(new URL("../ios/App/App/EquanimityGongPlugin.swift", import.meta.url), "utf8");
+  const plist = await readFile(new URL("../ios/App/App/Info.plist", import.meta.url), "utf8");
+  assert.match(plist, /<key>UIBackgroundModes<\/key>\s*<array>\s*<string>audio<\/string>\s*<\/array>/);
+  assert.match(native, /setCategory\(\.playback, options: \.mixWithOthers\)/);
+  assert.match(native, /player.volume = 0.82/);
+  assert.match(native, /player.numberOfLoops = 0/);
+  assert.match(native, /audioPlayerDidFinishPlaying[\s\S]*ended\(\)/);
+  assert.match(native, /audioPlayerDecodeErrorDidOccur[\s\S]*ended\(\)/);
+  assert.match(native, /guard let self, self.playbackID == id else \{ return \}/);
+  const finish = native.slice(native.indexOf("private func finishPlayback()"), native.indexOf("func play(file:"));
+  for (const cleanup of ["activePlayer?.stop()", "activePlayer?.delegate = nil", "activePlayer = nil", "playbackDelegate = nil", "playbackID = nil"])
+    assert.ok(finish.includes(cleanup), cleanup);
+  assert.match(finish, /setActive\(false, options: \.notifyOthersOnDeactivation\)/);
+  assert.match(native, /if !played \{ finishPlayback\(\) \}/);
+  assert.match(native, /catch \{\s*finishPlayback\(\)/);
+  assert.match(native, /InterruptionType\(rawValue: raw\) == \.began/);
+  assert.doesNotMatch(native, /Timer\(|asyncAfter|beginBackgroundTask|UNNotification|ActivityKit|\.shouldResume|numberOfLoops = -1/);
+});

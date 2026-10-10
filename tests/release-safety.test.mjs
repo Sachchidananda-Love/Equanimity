@@ -51,7 +51,7 @@ test("Release HealthKit requests only the shipping verified metrics; Debug retai
   assert.match(swift, /requestAuthorization\(toShare: \[\], read:/);
   const plist = await read("ios/App/App/Info.plist");
   assert.match(plist, /optionally reads basal body temperature, menstrual flow, and cervical mucus/);
-  assert.doesNotMatch(plist, /NSHealthUpdateUsageDescription/);
+  assert.match(plist, /<key>NSHealthUpdateUsageDescription<\/key>\s*<string>Equanimity does not write or modify data in Apple Health\.<\/string>/);
 });
 test("backup protection targets only the app's WebKit directory, before web creation and on foreground", async () => {
   const [safety, app, scene, bridge, project] = await Promise.all([

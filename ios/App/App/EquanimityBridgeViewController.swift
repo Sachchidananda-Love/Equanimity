@@ -28,8 +28,13 @@ final class EquanimityBridgeViewController: CAPBridgeViewController {
         }
         if let diagnosticTimer { RunLoop.main.add(diagnosticTimer, forMode: .common) }
         #endif
+        // Capacitor installs its notification router while constructing the
+        // bridge. Register afterward so Practice can deduplicate foreground
+        // delivery, while forwarding unrelated notifications to that router.
+        PracticeNativeService.shared.install()
         bridge?.registerPluginInstance(EquanimityHealthKitPlugin())
         bridge?.registerPluginInstance(EquanimityGongPlugin())
+        bridge?.registerPluginInstance(EquanimityPracticePlugin())
     }
 
     deinit {

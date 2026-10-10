@@ -9,6 +9,7 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
         // Protect existing and future web storage before creating any WKWebView.
         EquanimityBackupSafety.protectDeviceStorage()
+        PracticeNativeService.shared.install()
         return true
     }
 

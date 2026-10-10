@@ -40,6 +40,9 @@ import { CloudPanel } from "../src/application/CloudPanel";
 import { observeCloudLifecycle } from "../src/platform/cloud-lifecycle";
 import { lifecycleLog, lifecycleMeasure, observeUiDiagnostics } from "../src/platform/lifecycle-log";
 import { playGong } from "../src/platform/gong-player";
+import { createPracticeLockScreen, isIosPractice } from "../src/platform/practice-lock-screen";
+import { nativePracticePlan } from "../src/domain/practice/native-plan";
+import { PracticeLockScreenControls } from "../src/application/PracticeLockScreenControls";
 import { HealthKitTools } from "../src/application/HealthKitTools";
 
 type Screen = "Practice" | "Journal" | "Insights";
@@ -574,30 +577,49 @@ function SaveTimerModal({ initial, onClose, onSave }: { initial?: TimerPreset; o
 
 function PracticeScreen({ timers, setTimers, openReflection, notify }: { timers: TimerPreset[]; setTimers: React.Dispatch<React.SetStateAction<TimerPreset[]>>; openReflection: (request: ReflectionRequest) => void; notify: (message: string) => void }) {
   const deviceScope = useContext(DeviceStateScopeContext);
+  const [nativePractice] = useState(createPracticeLockScreen);
+  const activePractice = useRef<StoredPractice | null>(null);
   const [mode, setMode] = useState<PracticeMode>("Timer"); const [duration, setDuration] = useState(600); const [remaining, setRemaining] = useState(600); const [running, setRunning] = useState(false); const [elapsed, setElapsed] = useState(0);
   const [gongMenu, setGongMenu] = useState<"opening" | "closing" | null>(null); const [openingGong, setOpeningGong] = useState(gongNames[0]); const [closingGong, setClosingGong] = useState(gongNames[0]); const [intervalEnabled, setIntervalEnabled] = useState(true); const [intervalMinutes, setIntervalMinutes] = useState(5); const [intervalGong, setIntervalGong] = useState(gongNames[2]); const [customGongs, setCustomGongs] = useState([3, 8]); const [customGongSounds, setCustomGongSounds] = useState([gongNames[2], gongNames[3]]);
   const [editingGongs, setEditingGongs] = useState(false); const [builder, setBuilder] = useState<TimerPreset | "new" | null>(null); const [presetMenu, setPresetMenu] = useState<RecordId | null>(null); const [draftId] = useState(createRecordId); const [customDurationOpen, setCustomDurationOpen] = useState(false); const [customHours, setCustomHours] = useState(0); const [customMinutes, setCustomMinutes] = useState(15); const [customSeconds, setCustomSeconds] = useState(0); const lastGong = useRef(-1); const deadline = useRef<number | null>(null); const stopwatchStartedAt = useRef<number | null>(null); const restored = useRef(false);
   const previousMode = useRef<"Timer" | "Stopwatch">("Timer");
-  const clearStoredPractice = useCallback(() => { try { lifecycleMeasure("active-practice checkpoint clear", () => localRepository.savePractice(null, deviceScope)); } catch { lifecycleLog("practice checkpoint unavailable"); } }, [deviceScope]);
-  const storePractice = useCallback((record: StoredPractice) => { try { lifecycleMeasure("active-practice checkpoint write", () => localRepository.savePractice(record, deviceScope)); } catch { lifecycleLog("practice checkpoint unavailable"); } }, [deviceScope]);
+  const clearStoredPractice = useCallback((completed = false) => { activePractice.current = null; nativePractice.cancel(completed); try { lifecycleMeasure("active-practice checkpoint clear", () => localRepository.savePractice(null, deviceScope)); } catch { lifecycleLog("practice checkpoint unavailable"); } }, [deviceScope, nativePractice]);
+  const storePractice = useCallback((record: StoredPractice) => { activePractice.current = record; try { lifecycleMeasure("active-practice checkpoint write", () => localRepository.savePractice(record, deviceScope)); } catch { lifecycleLog("practice checkpoint unavailable"); } }, [deviceScope]);
   useEffect(() => { lifecycleLog("practice active state committed", { ready: running }); }, [running]);
   const completeTimer = useCallback(() => {
-    setRunning(false); setRemaining(0); deadline.current = null; clearStoredPractice(); tone(closingGong);
-    if (typeof Notification !== "undefined" && Notification.permission === "granted") new Notification("Practice complete", { body: "Your meditation timer has finished." });
+    const nativeGong = nativePractice.ownsGongs();
+    const onTime = deadline.current !== null && Date.now() - deadline.current < 1500;
+    setRunning(false); setRemaining(0); deadline.current = null; clearStoredPractice(true);
+    if (!nativeGong && (!isIosPractice() || (document.visibilityState === "visible" && onTime))) tone(closingGong);
+    if (!isIosPractice() && typeof Notification !== "undefined" && Notification.permission === "granted") new Notification("Practice complete", { body: "Your meditation timer has finished." });
     openReflection({ duration: Math.max(1, Math.round(duration / 60)), type: "Meditation" });
-  }, [closingGong, duration, openReflection, clearStoredPractice]);
+  }, [closingGong, duration, openReflection, clearStoredPractice, nativePractice]);
   useEffect(() => {
     if (restored.current) return; restored.current = true;
     try {
-      const saved = localRepository.loadPractice(deviceScope); if (!saved) return;
+      const saved = localRepository.loadPractice(deviceScope); if (!saved) { nativePractice.cancel(); return; }
       const restoreTimer = window.setTimeout(() => {
         setMode(saved.mode); setDuration(saved.duration); setOpeningGong(normalizedGongName(saved.openingGong)); setClosingGong(normalizedGongName(saved.closingGong)); setIntervalEnabled(saved.intervalEnabled); setIntervalMinutes(saved.intervalMinutes); setIntervalGong(normalizedGongName(saved.intervalGong ?? gongNames[2])); setCustomGongs(saved.customGongs); setCustomGongSounds((saved.customGongSounds ?? saved.customGongs.map(() => gongNames[2])).map(normalizedGongName));
+        activePractice.current = saved;
         if (saved.mode === "Timer" && saved.endAt) { const next = Math.max(0, Math.ceil((saved.endAt - Date.now()) / 1000)); setRemaining(next); if (next > 0) { deadline.current = saved.endAt; lastGong.current = saved.duration - next; setRunning(true); } else { clearStoredPractice(); notify("Your timer finished while you were away"); openReflection({ duration: Math.max(1, Math.round(saved.duration / 60)), type: "Meditation" }); } }
         if (saved.mode === "Stopwatch" && saved.startedAt) { stopwatchStartedAt.current = saved.startedAt; setElapsed(Math.max(0, Math.floor((Date.now() - saved.startedAt) / 1000))); setRunning(true); }
       }, 0);
       return () => window.clearTimeout(restoreTimer);
     } catch { clearStoredPractice(); }
-  }, [notify, openReflection, deviceScope, clearStoredPractice]);
+  }, [notify, openReflection, deviceScope, clearStoredPractice, nativePractice]);
+  useEffect(() => {
+    if (!running || mode !== "Timer" || !deadline.current || !activePractice.current) return;
+    const record: StoredPractice = { ...activePractice.current, endAt: deadline.current, duration, openingGong, closingGong, intervalEnabled, intervalMinutes, intervalGong, customGongs, customGongSounds };
+    if (JSON.stringify(record) !== JSON.stringify(activePractice.current)) storePractice(record);
+    const plan = nativePracticePlan(record);
+    if (plan) void nativePractice.sync(plan);
+  }, [running, mode, duration, openingGong, closingGong, intervalEnabled, intervalMinutes, intervalGong, customGongs, customGongSounds, nativePractice, storePractice]);
+  useEffect(() => {
+    const resume = () => { if (document.visibilityState === "visible") void nativePractice.reconcile(); };
+    const appState = (event: Event) => { if ((event as CustomEvent<{ active: boolean }>).detail?.active) void nativePractice.reconcile(); };
+    document.addEventListener("visibilitychange", resume); window.addEventListener("equanimity:app-state", appState);
+    return () => { document.removeEventListener("visibilitychange", resume); window.removeEventListener("equanimity:app-state", appState); nativePractice.cancel(); };
+  }, [nativePractice]);
   useEffect(() => {
     lifecycleLog("practice timer effect", { ready: running });
     if (!running) return;
@@ -605,14 +627,27 @@ function PracticeScreen({ timers, setTimers, openReflection, notify }: { timers:
       if (mode === "Stopwatch") { if (stopwatchStartedAt.current) setElapsed(Math.max(0, Math.floor((Date.now() - stopwatchStartedAt.current) / 1000))); return; }
       if (!deadline.current) return; const next = Math.max(0, Math.ceil((deadline.current - Date.now()) / 1000)); const practiced = duration - next;
       const intervalSeconds = Math.max(1, intervalMinutes) * 60; const crossedInterval = intervalEnabled && Math.floor(practiced / intervalSeconds) > Math.floor(Math.max(0, lastGong.current) / intervalSeconds); const customIndex = customGongs.findIndex((gong) => gong * 60 > lastGong.current && gong * 60 <= practiced);
-      if (practiced > 0 && practiced < duration && customIndex >= 0) tone(customGongSounds[customIndex] ?? gongNames[2]); else if (practiced > 0 && practiced < duration && crossedInterval) tone(intervalGong); lastGong.current = practiced; setRemaining(next); if (next === 0) completeTimer();
+      if (nativePractice.ownsGongs() && document.visibilityState === "visible" && practiced > 0 && practiced < duration) {
+        const seconds = customIndex >= 0 ? customGongs[customIndex] * 60 : crossedInterval ? Math.floor(practiced / intervalSeconds) * intervalSeconds : null;
+        if (seconds !== null) nativePractice.playDue(deadline.current - duration * 1000 + seconds * 1000);
+      }
+      // Authorized iOS notifications own scheduled gongs even in foreground;
+      // their delegate uses the existing native audio player exactly once.
+      if (!nativePractice.ownsGongs() && (!isIosPractice() || document.visibilityState === "visible")) {
+        const fresh = (seconds: number) => !isIosPractice() || Date.now() - (deadline.current! - duration * 1000 + seconds * 1000) < 1500;
+        if (practiced > 0 && practiced < duration && customIndex >= 0 && fresh(customGongs[customIndex] * 60)) tone(customGongSounds[customIndex] ?? gongNames[2]); else if (practiced > 0 && practiced < duration && crossedInterval && fresh(Math.floor(practiced / intervalSeconds) * intervalSeconds)) tone(intervalGong);
+      }
+      lastGong.current = practiced; setRemaining(next);
+      // Do not cancel the imminent OS final notification from a hidden webview
+      // that happened to get a last tick just before suspension.
+      if (next === 0 && (!isIosPractice() || document.visibilityState === "visible")) completeTimer();
     };
     let firstTick = true;
     update(); const timer = window.setInterval(() => { if (firstTick) { firstTick = false; lifecycleLog("practice first timer tick"); } update(); }, 500);
     lifecycleLog("practice timer interval created");
     document.addEventListener("visibilitychange", update); window.addEventListener("pageshow", update);
     return () => { lifecycleLog("practice timer interval cleared"); window.clearInterval(timer); document.removeEventListener("visibilitychange", update); window.removeEventListener("pageshow", update); };
-  }, [running, mode, duration, intervalEnabled, intervalMinutes, intervalGong, customGongs, customGongSounds, completeTimer]);
+  }, [running, mode, duration, intervalEnabled, intervalMinutes, intervalGong, customGongs, customGongSounds, completeTimer, nativePractice]);
   useEffect(() => { if (presetMenu === null) return; const closeMenu = (event: PointerEvent) => { if (!(event.target as Element).closest(".timer-more,.timer-card-menu")) setPresetMenu(null); }; document.addEventListener("pointerdown", closeMenu); return () => document.removeEventListener("pointerdown", closeMenu); }, [presetMenu]);
   const chooseDuration = (seconds: number) => { setDuration(seconds); setRemaining(seconds); setRunning(false); deadline.current = null; clearStoredPractice(); lastGong.current = -1; };
   const switchPracticeMode = (nextMode: "Timer" | "Stopwatch") => { previousMode.current = nextMode; setMode(nextMode); setRunning(false); deadline.current = null; stopwatchStartedAt.current = null; clearStoredPractice(); };
@@ -621,8 +656,9 @@ function PracticeScreen({ timers, setTimers, openReflection, notify }: { timers:
   const toggleRunning = () => {
     lifecycleLog(running ? "practice pause tapped" : "practice start tapped");
     if (running) { if (mode === "Timer" && deadline.current) setRemaining(Math.max(0, Math.ceil((deadline.current - Date.now()) / 1000))); if (mode === "Stopwatch" && stopwatchStartedAt.current) setElapsed(Math.max(0, Math.floor((Date.now() - stopwatchStartedAt.current) / 1000))); setRunning(false); deadline.current = null; stopwatchStartedAt.current = null; clearStoredPractice(); return; }
-    if (typeof Notification !== "undefined" && Notification.permission === "default") void Notification.requestPermission();
-    if (mode === "Timer") { if (remaining === duration) tone(openingGong); const endAt = Date.now() + remaining * 1000; deadline.current = endAt; lastGong.current = duration - remaining; storePractice({ mode: "Timer", duration, endAt, openingGong, closingGong, intervalEnabled, intervalMinutes, intervalGong, customGongs, customGongSounds }); }
+    if (!isIosPractice() && typeof Notification !== "undefined" && Notification.permission === "default") void Notification.requestPermission();
+    if (isIosPractice() && mode === "Timer") void nativePractice.requestPermissionIfNeeded();
+    if (mode === "Timer") { if (remaining === duration) tone(openingGong); const endAt = Date.now() + remaining * 1000; deadline.current = endAt; lastGong.current = duration - remaining; storePractice({ sessionId: createRecordId(), mode: "Timer", duration, endAt, openingGong, closingGong, intervalEnabled, intervalMinutes, intervalGong, customGongs, customGongSounds }); }
     else { const startedAt = Date.now() - elapsed * 1000; stopwatchStartedAt.current = startedAt; storePractice({ mode: "Stopwatch", duration, startedAt, openingGong, closingGong, intervalEnabled, intervalMinutes, intervalGong, customGongs, customGongSounds }); }
     setRunning(true);
     lifecycleLog("practice active timer state set");
@@ -632,6 +668,7 @@ function PracticeScreen({ timers, setTimers, openReflection, notify }: { timers:
   return <section className="page practice-page"><PageHeader eyebrow="Practice room" title="Practice" action={mode === "Saved" ? <button className="header-action" onClick={() => switchPracticeMode(previousMode.current)}>← Back to practice</button> : <button className="header-action" onClick={() => { previousMode.current = mode === "Stopwatch" ? "Stopwatch" : "Timer"; setMode("Saved"); setRunning(false); deadline.current = null; stopwatchStartedAt.current = null; clearStoredPractice(); }}>Saved timers <span>{timers.length}</span></button>} />{mode !== "Saved" && <div className="segmented" role="tablist" tabIndex={0} style={{ "--pill-offset": mode === "Stopwatch" ? "calc(100% + 4px)" : "0%" } as React.CSSProperties} onClick={(event) => { if (event.target !== event.currentTarget) return; const bounds = event.currentTarget.getBoundingClientRect(); switchPracticeMode(event.clientX < bounds.left + bounds.width / 2 ? "Timer" : "Stopwatch"); }} onKeyDown={(event) => { if (event.key === "ArrowLeft") switchPracticeMode("Timer"); if (event.key === "ArrowRight") switchPracticeMode("Stopwatch"); }}>{(["Timer", "Stopwatch"] as const).map((item) => <button role="tab" aria-selected={mode === item} key={item} onClick={() => switchPracticeMode(item)}>{item}</button>)}</div>}
     {mode === "Saved" ? <div className="saved-layout"><div className="saved-intro"><p className="eyebrow">Your collection</p><h2>Return to a familiar rhythm.</h2><p>Saved timers remember exact durations, interval sounds, and every custom gong.</p></div><div className="saved-grid">{timers.map((preset) => <article className="saved-timer card" key={preset.id}><button className="saved-timer-open" aria-label={`Use ${preset.name}`} onClick={() => choosePreset(preset)} /><div className={`mini-dial ${preset.color}`}>{presetGongMarks(preset).map((mark) => <i className="mini-gong-mark" aria-hidden="true" key={mark} style={{ transform: `rotate(${mark / preset.seconds * 360}deg)` }} />)}<span>{Math.round(preset.seconds / 60)}</span><small>min</small></div><div className="saved-copy"><p className="eyebrow">{preset.interval ? `Gong every ${preset.interval / 60} min` : `${preset.gongs?.length ?? 0} custom gongs`}</p><h3>{preset.name}</h3><span>{preset.startGong}</span></div><button className="timer-more" aria-label={`Edit ${preset.name}`} onClick={() => setPresetMenu(presetMenu === preset.id ? null : preset.id)}>•••</button>{presetMenu === preset.id && <div className="timer-card-menu"><button onClick={() => { setBuilder(preset); setPresetMenu(null); }}>Edit</button><button onClick={() => { setTimers((current) => current.filter((item) => item.id !== preset.id)); setPresetMenu(null); notify("Timer removed"); }}>Delete</button></div>}</article>)}</div><button className="outline-button" onClick={() => setBuilder("new")}><span>＋</span> Save a new timer</button></div> : <div className="practice-workspace"><section className="timer-stage">{mode === "Timer" ? <TimerDial value={remaining} total={duration} label="Meditation timer" marks={[...new Set([...customGongs.map((gong) => gong * 60), ...(intervalEnabled ? Array.from({ length: Math.floor((duration - 1) / (Math.max(1, intervalMinutes) * 60)) }, (_, index) => (index + 1) * Math.max(1, intervalMinutes) * 60) : [])])].filter((gong) => gong > 0 && gong < duration).sort((a, b) => a - b)} /> : <div className="stopwatch-display"><span>Stopwatch</span><strong>{formatTime(elapsed, true)}</strong><small>unbounded practice</small></div>}<div className="timer-actions"><button className="secondary-circle" aria-label="Reset timer" onClick={() => { if (mode === "Timer") setRemaining(duration); else setElapsed(0); setRunning(false); deadline.current = null; stopwatchStartedAt.current = null; clearStoredPractice(); }}>↺</button><button className="start-button" onClick={toggleRunning}>{running ? "Pause" : mode === "Timer" && remaining < duration ? "Resume" : "Start"}</button><button className="secondary-circle" aria-label="Finish practice" onClick={finish}>✓</button></div>{mode === "Timer" && <><div className="duration-chips">{[5, 10, 20, 30, 45, 60].map((mins) => <button className={duration === mins * 60 ? "active" : ""} key={mins} onClick={() => chooseDuration(mins * 60)}>{mins} min</button>)}<button className={customDurationOpen ? "active" : ""} onClick={() => setCustomDurationOpen(!customDurationOpen)}>Custom</button></div>{customDurationOpen && <div className="custom-duration" aria-label="Custom timer duration"><label><input type="number" min="0" max="23" value={customHours} onChange={(event) => setCustomHours(Math.max(0, Number(event.target.value)))} /><span>hours</span></label><b>:</b><label><input type="number" min="0" max="59" value={customMinutes} onChange={(event) => setCustomMinutes(Math.max(0, Number(event.target.value)))} /><span>minutes</span></label><b>:</b><label><input type="number" min="0" max="59" value={customSeconds} onChange={(event) => setCustomSeconds(Math.max(0, Number(event.target.value)))} /><span>seconds</span></label><button onClick={() => { chooseDuration(Math.max(5, customHours * 3600 + customMinutes * 60 + customSeconds)); setCustomDurationOpen(false); }}>Set timer</button></div>}<button className="save-current" onClick={() => setBuilder(currentDraft)}>＋ Save this setup</button></>}</section>
       <aside className="timer-settings card"><div className="card-heading"><div><p className="eyebrow">Sound & structure</p><h2>Gongs</h2></div><button className="sound-button" onClick={() => tone(openingGong)}>♪ Try</button></div>
+        <PracticeLockScreenControls service={nativePractice} />
         {(["opening", "closing"] as const).map((kind) => { const value = kind === "opening" ? openingGong : closingGong; return <div className="gong-setting" key={kind}><button className="setting-row" onClick={() => setGongMenu(gongMenu === kind ? null : kind)}><span><i className="setting-icon">◎</i><b>{kind === "opening" ? "Opening gong" : "Closing gong"}</b><small>{value}</small></span><em>⌄</em></button>{gongMenu === kind && <div className="gong-options">{gongNames.map((gong) => <button className={gong === value ? "selected" : ""} key={gong} onClick={() => { if (kind === "opening") setOpeningGong(gong); else setClosingGong(gong); setGongMenu(null); tone(gong); }}>{gong}{gong === value && <span>✓</span>}</button>)}</div>}</div>; })}
         <div className="setting-row"><span><i className="setting-icon">↻</i><b>Repeating gong</b><small>{intervalEnabled ? `Every ${intervalMinutes} minutes · ${intervalGong}` : "Off"}</small></span><label className="toggle"><input aria-label="Enable repeating gong" type="checkbox" checked={intervalEnabled} onChange={(event) => setIntervalEnabled(event.target.checked)} /><span /></label></div>{intervalEnabled && <div className="inline-repeat-editor"><label className="repeat-live-time"><span>Every</span><RangeInput className="gong-range" min="1" max="120" value={intervalMinutes} onValueChange={setIntervalMinutes} /><span className="gong-minute-field"><input className="gong-minute-input" aria-label="Repeating gong minutes" type="number" min="1" max="120" value={intervalMinutes} onChange={(event) => setIntervalMinutes(Math.min(120, Math.max(1, Number(event.target.value))))} /> min</span></label><label>Sound<select value={intervalGong} onChange={(event) => { setIntervalGong(event.target.value); tone(event.target.value); }}>{gongNames.map((gong) => <option key={gong}>{gong}</option>)}</select></label></div>}
         <button className="setting-row" onClick={() => setEditingGongs(!editingGongs)}><span><i className="setting-icon">＋</i><b>Custom gongs</b><small>{customGongs.length ? `At ${customGongs.join(", ")} minutes` : "None"}</small></span><em>{editingGongs ? "⌃" : "Edit"}</em></button>{editingGongs && <div className="inline-gong-editor">{customGongs.map((gong, index) => <div className="sound-row" key={index}><input aria-label={`Gong ${index + 1} minute`} type="number" min="1" value={gong} onChange={(event) => setCustomGongs(customGongs.map((item, itemIndex) => itemIndex === index ? Number(event.target.value) : item))} /><span>min</span><select aria-label={`Gong ${index + 1} sound`} value={customGongSounds[index] ?? gongNames[2]} onChange={(event) => { setCustomGongSounds(customGongSounds.map((item, itemIndex) => itemIndex === index ? event.target.value : item)); tone(event.target.value); }}>{gongNames.map((sound) => <option key={sound}>{sound}</option>)}</select><button onClick={() => { setCustomGongs(customGongs.filter((_, itemIndex) => itemIndex !== index)); setCustomGongSounds(customGongSounds.filter((_, itemIndex) => itemIndex !== index)); }}>×</button></div>)}<button onClick={() => { setCustomGongs([...customGongs, Math.max(1, Math.round(duration / 120))]); setCustomGongSounds([...customGongSounds, gongNames[2]]); }}>＋ Add gong</button></div>}

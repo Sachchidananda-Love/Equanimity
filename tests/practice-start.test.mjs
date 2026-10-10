@@ -6,6 +6,7 @@ import { Capacitor } from "@capacitor/core";
 import YiApp from "../app/YiApp.tsx";
 import { localRepository, defaultAppData } from "../src/adapters/local/repository.ts";
 import { createCloudSession } from "../src/services/cloud-session.ts";
+import { practiceNativeBridge } from "../src/platform/practice-lock-screen.ts";
 
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
 async function click(selector) {
@@ -25,12 +26,22 @@ async function mounted(t, options, run) {
   for (const key of keys) Object.defineProperty(globalThis, key, { configurable: true, writable: true, value: dom.window[key] });
   const oldAct = globalThis.IS_REACT_ACT_ENVIRONMENT; globalThis.IS_REACT_ACT_ENVIRONMENT = true;
   dom.window.HTMLCanvasElement.prototype.getContext = () => null;
-  const state = { audio: 0, writes: [], intervals: new Map(), intervalCreations: 0, cloudWrites: 0, parentRenders: 0, logs: [] };
+  const state = { audio: 0, writes: [], intervals: new Map(), intervalCreations: 0, cloudWrites: 0, parentRenders: 0, logs: [], nativeCalls: [] };
   let now = 1791475200000, nextId = 100000;
   window.__EQUANIMITY_LIFECYCLE_DEBUG__ = true;
   t.mock.method(console, "debug", message => { state.logs.push(message); if (message.includes("account view render started")) state.parentRenders++; });
   t.mock.method(Date, "now", () => now);
   t.mock.method(Capacitor, "getPlatform", () => options.ios ? "ios" : "web");
+  if (options.nativeScheduling) {
+    const status = { permission: "authorized", soundEnabled: true, liveActivitiesEnabled: true, scheduled: 0, requested: 0, notificationScheduling: false };
+    t.mock.method(practiceNativeBridge, "status", async () => status);
+    t.mock.method(practiceNativeBridge, "sync", async ({ plan }) => {
+      state.nativeCalls.push({ kind: "sync", plan: structuredClone(plan) });
+      return { ...status, notificationScheduling: true, scheduled: plan.events.length, requested: plan.events.length };
+    });
+    t.mock.method(practiceNativeBridge, "cancel", async options => { state.nativeCalls.push({ kind: "cancel", ...options }); });
+    t.mock.method(practiceNativeBridge, "playDue", async options => { state.nativeCalls.push({ kind: "playDue", ...options }); });
+  }
   globalThis.Audio = class {
     constructor() { state.audio++; }
     pause() {}
@@ -150,5 +161,80 @@ test("custom, repeating and completion gongs can fail without interrupting ticks
     assert.equal(state.intervalCreations, 1); assert.equal(state.intervals.size, 0);
     assert.equal(state.writes.length, 2); assert.equal(state.writes[1], null);
     assert.ok(document.querySelector(".modal-backdrop"));
+  });
+});
+
+test("iOS Start schedules exact selected events once; ticks never reschedule or double-play", async t => {
+  await mounted(t, { ios: true, nativeScheduling: true }, async state => {
+    await click(".start-button");
+    const plans = () => state.nativeCalls.filter(call => call.kind === "sync");
+    assert.equal(plans().length, 1);
+    assert.deepEqual(plans()[0].plan.events.map(event => [event.at - plans()[0].plan.startedAt, event.file]), [
+      [180000, "gong-3.wav"], [300000, "gong-3.wav"], [480000, "tripple-gong.wav"], [600000, "gong-1.wav"],
+    ]);
+    assert.equal(state.writes.length, 1);
+    await state.tick(180); await state.tick(120); await state.tick(180);
+    assert.equal(plans().length, 1); assert.equal(state.writes.length, 1);
+    await state.tick(120);
+    assert.equal(state.nativeCalls.at(-1).kind, "cancel");
+    assert.equal(state.nativeCalls.at(-1).completed, true);
+    assert.ok(document.querySelector(".modal-backdrop"));
+  });
+});
+
+test("iOS pause/reset cancels its schedule and Resume uses a new ID/deadline", async t => {
+  await mounted(t, { ios: true, nativeScheduling: true }, async state => {
+    await click(".start-button");
+    const first = state.nativeCalls.find(call => call.kind === "sync").plan;
+    await state.tick(10); await click(".start-button");
+    assert.equal(state.nativeCalls.at(-1).kind, "cancel");
+    await click(".start-button");
+    const second = state.nativeCalls.filter(call => call.kind === "sync").at(-1).plan;
+    assert.notEqual(first.sessionId, second.sessionId);
+    assert.equal(first.endAt, second.endAt);
+    await click('[aria-label="Reset timer"]');
+    assert.equal(state.nativeCalls.at(-1).kind, "cancel");
+  });
+});
+
+test("iOS relaunch/resume reconciles the persisted session ID without a new checkpoint", async t => {
+  const saved = { sessionId: "synthetic-session", mode: "Timer", duration: 600, endAt: 1791475500000, openingGong: "Gong 1", closingGong: "Tripple Gong", intervalEnabled: true, intervalMinutes: 2, intervalGong: "Gong 2", customGongs: [], customGongSounds: [] };
+  await mounted(t, { ios: true, nativeScheduling: true, saved }, async state => {
+    const first = state.nativeCalls.find(call => call.kind === "sync").plan;
+    assert.equal(first.sessionId, saved.sessionId); assert.equal(first.endAt, saved.endAt);
+    assert.equal(state.writes.length, 0);
+    await act(async () => window.dispatchEvent(new window.CustomEvent("equanimity:app-state", { detail: { active: true } })));
+    const second = state.nativeCalls.filter(call => call.kind === "sync").at(-1).plan;
+    assert.deepEqual(second, first); assert.equal(state.writes.length, 0);
+  });
+});
+
+test("hidden iOS webview cannot cancel the final notification just before suspension", async t => {
+  await mounted(t, { ios: true, nativeScheduling: true }, async state => {
+    await click(".start-button");
+    const cancellations = () => state.nativeCalls.filter(call => call.kind === "cancel").length;
+    const before = cancellations();
+    Object.defineProperty(document, "visibilityState", { configurable: true, value: "hidden" });
+    await state.tick(600);
+    assert.equal(cancellations(), before);
+    assert.equal(document.querySelector(".modal-backdrop"), null);
+    Object.defineProperty(document, "visibilityState", { configurable: true, value: "visible" });
+    await act(async () => document.dispatchEvent(new window.Event("visibilitychange")));
+    assert.ok(document.querySelector(".modal-backdrop"));
+    assert.equal(state.nativeCalls.at(-1).completed, true);
+  });
+});
+
+test("editing the active repeating interval updates the same native session, not its deadline", async t => {
+  await mounted(t, { ios: true, nativeScheduling: true }, async state => {
+    await click(".start-button");
+    const first = state.nativeCalls.find(call => call.kind === "sync").plan;
+    const checkbox = document.querySelector('[aria-label="Enable repeating gong"]');
+    await click(checkbox);
+    const next = state.nativeCalls.filter(call => call.kind === "sync").at(-1).plan;
+    assert.equal(next.sessionId, first.sessionId); assert.equal(next.endAt, first.endAt);
+    assert.equal(next.events.some(event => event.at === next.startedAt + 300000), false);
+    assert.equal(state.writes.length, 2, "one edit checkpoint, not per-tick persistence");
+    await state.tick(1); assert.equal(state.writes.length, 2);
   });
 });
